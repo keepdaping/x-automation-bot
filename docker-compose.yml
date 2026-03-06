@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  bot:
+    build: .
+    container_name: x-automation-bot
+    restart: unless-stopped
+
+    # Credentials are injected via .env — never hardcoded here
+    env_file:
+      - .env
+
+    volumes:
+      # Persist database and logs outside the container
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+    # Resource limits — keeps the container lean
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: "256M"
