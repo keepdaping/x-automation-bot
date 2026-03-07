@@ -1,18 +1,17 @@
 # main.py
 """
 Entry point for the X Automation Bot.
+Designed for GitHub Actions — runs once and exits.
 
 Startup sequence:
   1. Validate all required environment variables.
   2. Initialise the SQLite database.
   3. Authenticate with the Twitter API.
-  4. Run one post cycle immediately.
-  5. Run one engagement cycle immediately.
-  6. Hand off to the scheduler for all recurring cycles.
+  4. Run one post cycle.
+  5. Run one engagement cycle.
+  6. Exit cleanly.
 
-Scheduled jobs:
-  post_job       — every Config.MIN_INTERVAL_MINUTES  (default 90 min)
-  engagement_job — every ENGAGEMENT_INTERVAL_MINUTES  (default 30 min)
+GitHub Actions cron handles all scheduling.
 """
 from config import Config
 from database import init_db
@@ -20,12 +19,8 @@ from auth import get_client
 from generator import generate_post, pick_topic
 from moderator import check
 from poster import post_tweet
-from scheduler import build_scheduler
 from engagement import run_engagement_cycle
 from logger_setup import log
-
-# How often the engagement cycle fires (independent of the post cycle).
-ENGAGEMENT_INTERVAL_MINUTES = 30
 
 
 def run_post_cycle(client) -> None:
@@ -76,29 +71,14 @@ def main() -> None:
         log.critical(str(exc))
         raise SystemExit(1)
 
-    # ── 4. Run one post cycle immediately on startup ──────────────────────
+    # ── 4. Run one post cycle ─────────────────────────────────────────────
     run_post_cycle(client)
 
-    # ── 5. Run one engagement cycle immediately on startup ────────────────
+    # ── 5. Run one engagement cycle ───────────────────────────────────────
     run_engagement_cycle(client)
 
-    # ── 6. Build scheduler and register both jobs ─────────────────────────
-    scheduler = build_scheduler(lambda: run_post_cycle(client))
-
-    scheduler.add_job(
-        lambda: run_engagement_cycle(client),
-        trigger="interval",
-        minutes=ENGAGEMENT_INTERVAL_MINUTES,
-        id="engagement_job",
-        max_instances=1,   # never overlap with itself
-        coalesce=True,     # if a run was missed, fire once — not multiple times
-    )
-    log.info(f"Engagement cycle scheduled — every {ENGAGEMENT_INTERVAL_MINUTES} minutes.")
-
-    try:
-        scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
-        log.info("Bot shut down cleanly.")
+    # ── 6. Exit cleanly — GitHub Actions handles scheduling ───────────────
+    log.info("Cycle complete. Exiting cleanly.")
 
 
 if __name__ == "__main__":
