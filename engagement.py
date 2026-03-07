@@ -87,12 +87,21 @@ _QUESTION_PATTERNS = re.compile(
 
 _MIN_REPLY_WORDS = 4
 
-
 def _is_worth_replying(text: str) -> bool:
     words = text.strip().split()
     if len(words) < _MIN_REPLY_WORDS:
         return False
+    # Reply to questions OR any meaningful comment with 10+ words
+    if len(words) >= 10:
+        return True
     return bool(_QUESTION_PATTERNS.search(text))
+
+
+#def _is_worth_replying(text: str) -> bool:
+ #   words = text.strip().split()
+  #  if len(words) < _MIN_REPLY_WORDS:
+   #     return False
+    #return bool(_QUESTION_PATTERNS.search(text))
 
 
 # ── AI reply generation ───────────────────────────────────────────────────────
