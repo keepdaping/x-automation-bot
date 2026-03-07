@@ -40,32 +40,36 @@ from logger_setup import log
 MAX_LIKES_PER_HOUR     = 20
 MAX_REPLIES_PER_HOUR   = 5
 MAX_REPLIES_PER_CYCLE  = 5
-REPLY_DELAY_MIN_SEC    = 30
-REPLY_DELAY_MAX_SEC    = 120
+REPLY_DELAY_MIN_SEC    = 10
+REPLY_DELAY_MAX_SEC    = 30
 RECENT_TWEETS_TO_CHECK = 5
 REPLY_MAX_CHARS        = 220
 
 
 # ── Reply system prompt ───────────────────────────────────────────────────────
-# Improved: explicitly instructs the model to add value and use follow-up
-# questions when the comment is substantive enough to warrant one.
 
 _REPLY_SYSTEM_PROMPT = f"""\
-You are a sharp, friendly software engineer replying to comments on your X (Twitter) posts.
+You are a young person building in public — learning to code, freelancing, \
+and sharing your journey online. You reply to comments on your X posts.
+
+Your voice:
+- Sound like a real person texting back, not a corporate account.
+- Be genuine, warm and relatable — like talking to someone on the same journey.
+- Casual and conversational. Short sentences. No big words.
+- Honest about your own experience — share what you've actually been through.
+- Encouraging without being fake or preachy.
 
 Rules — follow every one:
 - Reply in 1–2 sentences only. Absolute maximum {REPLY_MAX_CHARS} characters.
-- Be warm, genuine, and conversational — peer talking to peer.
-- Add real value: expand on the idea, offer a concrete example, share a related insight,
-  or correct a misconception respectfully.
-- If the comment raises a genuine question or interesting angle, end your reply with
-  a short, focused follow-up question that invites continued discussion.
-- Do NOT add a follow-up question if the comment is a simple reaction or agreement —
+- Add real value: share a related experience, honest opinion, or useful tip.
+- If the comment raises a genuine question or interesting angle, end with a
+  short follow-up question that keeps the conversation going.
+- Do NOT add a follow-up question if the comment is a simple reaction —
   only ask one when it genuinely extends the conversation.
 - No emojis. No hashtags. No "follow me / check out / click here" phrases.
-- Never open with "Great point!", "Thanks for sharing!", "Absolutely!", or "Totally agree!" —
+- Never open with "Great point!", "Thanks for sharing!", "Absolutely!", "Totally agree!" —
   these are filler. Start with the substance.
-- Do NOT repeat or paraphrase the original tweet that was posted.
+- Do NOT repeat or paraphrase the original tweet.
 - Output ONLY the reply text. No preamble, no quotation marks, no label like "Reply:".
 """
 
@@ -151,7 +155,7 @@ def _replies_allowed() -> bool:
 
 def run_engagement_cycle(client: tweepy.Client) -> None:
     """
-    Main entry point — called by the scheduler every 30 minutes.
+    Main entry point — called once per GitHub Actions run.
     """
     log.info("─" * 50)
     log.info("[Engagement] Cycle started — scanning recent tweets for replies…")
@@ -211,7 +215,6 @@ def run_engagement_cycle(client: tweepy.Client) -> None:
             # ── 1. LIKE ───────────────────────────────────────────────────
             if _likes_allowed() and not is_tweet_liked(reply_id):
                 try:
-                    # FIX: client.like() takes only tweet_id (not user_id + tweet_id)
                     client.like(reply_id)
                     record_like(reply_id)
                     log.success(f"[Engagement] Reply liked — tweet_id={reply_id}")
