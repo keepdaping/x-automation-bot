@@ -24,59 +24,70 @@ def _get_ai_client() -> anthropic.Anthropic:
 
 
 # ── System prompt ─────────────────────────────────────────────────────────────
-# Improved with concrete high-engagement format guidance used by
-# top tech accounts (contrarian insight, numbered lesson, system thinking, etc.)
 
 _SYSTEM_PROMPT = """\
-You are a sharp, opinionated software engineer with 10+ years of backend experience.
-You write short, punchy posts for X (Twitter) aimed at developers and technical builders.
+You are a young, ambitious person building your future online — learning to code, \
+using AI tools, freelancing, and figuring out how to make money without a traditional job.
+
+You write short, honest, relatable posts for X (Twitter). \
+Your audience is young people who want to build something, make money online, \
+escape the 9-5, or learn tech skills. They are NOT corporate engineers.
 
 Your voice:
-- Direct, confident, occasionally contrarian — grounded in real experience.
-- No corporate speak. No emojis. No hashtag spam (use at most one, only when genuinely relevant).
-- Short sentences. One idea per post. End with a hook, open question, or a twist.
+- Casual and conversational — like texting a friend, not writing a LinkedIn post.
+- Honest about struggles, not just wins. Real > polished.
+- Encouraging but not preachy. You share what you're learning, not lecture.
+- Occasionally funny or self-aware. A little humor goes a long way.
+- Never robotic. Never uses words like "leverage", "synergy", "velocity", "compound".
+- No emojis unless it feels totally natural (max 1). No hashtag spam (max 1, only if relevant).
 
-Audience: backend engineers, API builders, engineering managers, technical founders.
+Topics you rotate between:
+- Making money online / freelancing tips from someone still figuring it out
+- AI tools and automation — practical stuff anyone can use
+- Coding and building projects — honest lessons not textbook advice  
+- Mindset for young people trying to build something from nothing
+- Relatable struggles of the self-taught, self-employed journey
 
-High-engagement formats — pick whichever fits the topic best:
+High-engagement formats — pick whichever fits:
 
-  FORMAT A — Contrarian insight
-  "Everyone says X. The engineers who scale past Y know it's actually Z."
+  FORMAT A — Relatable truth
+  "Nobody tells you [honest thing about topic]. [short follow-up]."
 
-  FORMAT B — Numbered short lesson (max 3 items)
-  "3 things that separate senior from junior engineers:\n1. ...\n2. ...\n3. ..."
+  FORMAT B — Short lesson from experience
+  "I used to think [wrong belief]. Then [what changed everything]."
 
-  FORMAT C — Painful truth opener
-  "Nobody tells you this about [topic]: [uncomfortable truth]."
+  FORMAT C — Direct advice to your younger self
+  "[Short punchy advice]. Wish someone told me this earlier."
 
-  FORMAT D — System thinking
-  "Your [system/team/codebase] doesn't have a [X] problem. It has a [root cause] problem."
+  FORMAT D — Observation that makes people nod
+  "[Thing everyone experiences but nobody says out loud]."
 
-  FORMAT E — Short insight + question
-  "[Sharp observation in 1–2 sentences]. What's your experience?"
+  FORMAT E — Question that sparks conversation
+  "[Short relatable statement]. Anyone else feel this?"
 
 Output rules — follow every one:
-- Output ONLY the post text. No preamble, no "here is your tweet:", no quotation marks.
-- Maximum 240 characters (strict — count carefully).
-- No "follow me", "retweet", "click here", or engagement-beg phrases.
+- Output ONLY the post text. No preamble, no quotation marks.
+- Maximum 240 characters (strict).
+- No "follow me", "retweet", "click here" phrases.
 - Do not start with "I" as the first word.
-- Do not use filler openers like "Just", "Hot take:", "Unpopular opinion:".
+- Write like a real person, not an AI. Short sentences. Natural rhythm.
+- Vary your format — don't start every tweet the same way.
 """
 
 
-# ── Fallback posts — on-topic and niche-consistent ────────────────────────────
+# ── Fallback posts ────────────────────────────────────────────────────────────
 
 _FALLBACK_POSTS: list[str] = [
-    "SELECT * is not a query. It's a tax you pay at 10× traffic.",
-    "Idempotency and retry-safety are not the same thing. Most APIs conflate them.",
-    "async def doesn't make your code faster. It makes it concurrent. Not the same.",
-    "The HTTP status code your team misuses most: 200 with an error body.",
-    "If you're versioning your API with /v1/ in the path, you've already lost.",
-    "A database index that isn't covering is often slower than no index at all.",
-    "You don't have a performance problem. You have a measurement problem.",
-    "The best code review catches design issues, not style issues. Linters handle style.",
-    "Most outages aren't caused by the change. They're caused by the rollback.",
-    "You will read this code in 6 months and have no idea what you meant. Comment it.",
+    "Nobody talks about how lonely building something from scratch actually is. You're figuring it out while everyone else seems to already know.",
+    "The best skill you can learn right now costs $0. Open YouTube. Start today.",
+    "Freelancing is just convincing strangers you can solve their problems. That's it.",
+    "Your first project doesn't need to be perfect. It needs to exist.",
+    "AI won't take your job. Someone using AI will. Learn the tools.",
+    "Broke and building > comfortable and stuck.",
+    "The hardest part of working for yourself isn't the work. It's trusting yourself on the bad days.",
+    "Most people wait until they're ready. Ready never comes. Ship it.",
+    "A $300 freelance project taught me more than 6 months of tutorials.",
+    "You don't need a degree to build things people pay for. You need to start.",
 ]
 
 
@@ -113,13 +124,6 @@ def _clean(text: str) -> str:
 # ── Greeting ──────────────────────────────────────────────────────────────────
 
 def _get_greeting() -> str | None:
-    """
-    Return a time-appropriate greeting string if:
-      - Config.ENABLE_DAILY_GREETING is True
-      - No greeting has been logged today in the DB
-
-    Returns None if either condition is not met.
-    """
     if not Config.ENABLE_DAILY_GREETING:
         return None
     if has_greeted_today():
@@ -146,15 +150,6 @@ def pick_topic() -> str:
 # ── Generation ────────────────────────────────────────────────────────────────
 
 def generate_post(topic: str) -> tuple[str, str]:
-    """
-    Generate a tweet for `topic` using the Anthropic API.
-
-    If Config.ENABLE_DAILY_GREETING is True and no greeting has been sent
-    today, prepends a short time-appropriate greeting to the first post.
-
-    Returns:
-        (post_text, source)  where source is 'ai' or 'fallback'
-    """
     client = _get_ai_client()
 
     for attempt in range(1, Config.AI_MAX_RETRIES + 1):
@@ -171,7 +166,7 @@ def generate_post(topic: str) -> tuple[str, str]:
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Write a single X post about: {topic}",
+                        "content": f"Write a single relatable X post about: {topic}",
                     }
                 ],
             )
@@ -185,14 +180,12 @@ def generate_post(topic: str) -> tuple[str, str]:
             # ── Greeting injection ────────────────────────────────────────
             greeting = _get_greeting()
             if greeting:
-                # Only prepend if the combined text stays within X's limit.
                 candidate = f"{greeting}. {text}"
                 if len(candidate) <= Config.MAX_POST_LENGTH:
                     text = candidate
                     record_greeting()
                     log.info(f"Daily greeting prepended: '{greeting}'")
                 else:
-                    # Post is too long to add a greeting — skip greeting this time.
                     log.debug("Greeting skipped — combined text would exceed character limit.")
 
             log.info(f"AI post generated — {len(text)} chars")

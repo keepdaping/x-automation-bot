@@ -36,84 +36,78 @@ class Config:
     DB_PATH: str                      = os.getenv("DB_PATH", "data/bot.db")
 
     # ── Greeting (once per day) ───────────────────────────────────────────
-    # Set to True to allow the bot to prepend a time-appropriate greeting
-    # (Good morning / Good afternoon / Good evening) to the first post each day.
-    # Greeting is never repeated within the same calendar day.
-    ENABLE_DAILY_GREETING: bool       = True
+    ENABLE_DAILY_GREETING: bool       = False
 
     # ── Daily theme schedule ──────────────────────────────────────────────
-    # Each entry maps to one weekday (0 = Monday … 6 = Sunday).
-    # "topics" is the pool the bot picks from randomly on that day.
-    # Add or rename themes freely — the rotation is purely day-of-week based.
     DAILY_THEMES: dict[int, dict] = {
-        0: {  # Monday — Engineering Mindset
-            "name": "Engineering Mindset",
+        0: {  # Monday — Making Money Online
+            "name": "Making Money Online",
+            "emoji": "💰",
+            "topics": [
+                "an honest truth about freelancing nobody tells beginners",
+                "how to land your first client online with no experience",
+                "why most people fail at making money online and how to avoid it",
+                "a simple way to start earning online with just a laptop",
+            ],
+        },
+        1: {  # Tuesday — AI & Automation
+            "name": "AI & Automation",
+            "emoji": "🤖",
+            "topics": [
+                "a free AI tool that saves hours of work every week",
+                "how regular people are using AI to make money right now",
+                "why ignoring AI tools is the biggest mistake you can make in 2025",
+                "a simple automation anyone can build to save time daily",
+            ],
+        },
+        2: {  # Wednesday — Learning & Coding
+            "name": "Learning & Coding",
+            "emoji": "💻",
+            "topics": [
+                "an honest lesson from teaching yourself to code",
+                "why building real projects beats tutorials every single time",
+                "the fastest way to learn coding when you have no money for courses",
+                "a relatable struggle every self-taught coder goes through",
+            ],
+        },
+        3: {  # Thursday — Freelancing Tips
+            "name": "Freelancing Tips",
+            "emoji": "🧑‍💻",
+            "topics": [
+                "how to price your services when you are just starting out",
+                "the biggest mistake new freelancers make with clients",
+                "how to find clients on the internet with zero reputation",
+                "what nobody tells you about working for yourself",
+            ],
+        },
+        4: {  # Friday — Mindset & Motivation
+            "name": "Mindset & Motivation",
             "emoji": "🧠",
             "topics": [
-                "a counterintuitive truth about how great engineers think",
-                "a mindset shift that separates senior from junior engineers",
-                "why writing less code is usually the harder skill",
-                "the mental model that changes how you debug complex systems",
+                "a mindset shift that changes how you approach building things",
+                "why starting messy beats waiting until you feel ready",
+                "an honest truth about the self-improvement journey",
+                "what separates people who build things from people who just dream",
             ],
         },
-        1: {  # Tuesday — System Design
-            "name": "System Design",
-            "emoji": "🏗️",
+        5: {  # Saturday — Building in Public
+            "name": "Building in Public",
+            "emoji": "🚀",
             "topics": [
-                "a concise insight about distributed systems trade-offs",
-                "why most teams over-engineer their first version",
-                "the system design mistake that only shows up at scale",
-                "a hard truth about consistency vs availability in real systems",
+                "a real lesson from building a project from scratch",
+                "why sharing your journey online attracts more opportunities",
+                "what it actually feels like to build something on your own",
+                "a small win worth celebrating when building something new",
             ],
         },
-        2: {  # Wednesday — API & Backend Craft
-            "name": "API & Backend Craft",
-            "emoji": "🔌",
+        6: {  # Sunday — Life & Growth
+            "name": "Life & Growth",
+            "emoji": "🌱",
             "topics": [
-                "a practical API design principle most teams ignore",
-                "the HTTP status code engineers misuse most and why it matters",
-                "why idempotency is the most underrated backend concept",
-                "a backend architecture pattern that saves you at 10x traffic",
-            ],
-        },
-        3: {  # Thursday — Code Quality
-            "name": "Code Quality",
-            "emoji": "✍️",
-            "topics": [
-                "a hard-earned lesson about writing code that survives a year",
-                "why the best code review catches design issues not style issues",
-                "the naming convention mistake that slows every team down",
-                "what makes a codebase genuinely maintainable vs just readable",
-            ],
-        },
-        4: {  # Friday — Productivity & Focus
-            "name": "Productivity & Focus",
-            "emoji": "⚡",
-            "topics": [
-                "the productivity habit that actually compounds for engineers",
-                "why deep work and flow state are not the same thing",
-                "the meeting pattern that kills engineering output silently",
-                "a counterintuitive truth about shipping faster as a team",
-            ],
-        },
-        5: {  # Saturday — Career & Growth
-            "name": "Career & Growth",
-            "emoji": "📈",
-            "topics": [
-                "the career move most engineers regret not making earlier",
-                "what distinguishes engineers who grow fast from those who plateau",
-                "a hard truth about technical leadership nobody says out loud",
-                "why optimising for learning rate beats optimising for salary",
-            ],
-        },
-        6: {  # Sunday — Debugging & Problem Solving
-            "name": "Debugging & Problem Solving",
-            "emoji": "🔍",
-            "topics": [
-                "the debugging technique that finds bugs other methods miss",
-                "why most production outages are caused by the rollback not the change",
-                "a systematic approach to problems that look random",
-                "the observability gap that makes hard bugs nearly impossible to trace",
+                "a life lesson you only learn by doing hard things",
+                "why consistency beats motivation every single time",
+                "an uncomfortable truth about growing up and chasing goals",
+                "what young people building their future need to hear today",
             ],
         },
     }
@@ -131,20 +125,14 @@ class Config:
         "link in bio",
     ]
 
-    # ── Theme helpers ─────────────────────────────────────────────────────
-
     @classmethod
     def get_todays_theme(cls) -> dict:
-        """Return the theme dict for today's weekday."""
-        weekday = date.today().weekday()   # 0 = Monday, 6 = Sunday
+        weekday = date.today().weekday()
         return cls.DAILY_THEMES[weekday]
 
     @classmethod
     def get_todays_topics(cls) -> list[str]:
-        """Return today's topic pool."""
         return cls.get_todays_theme()["topics"]
-
-    # ── Startup validation ────────────────────────────────────────────────
 
     @classmethod
     def validate(cls) -> None:
