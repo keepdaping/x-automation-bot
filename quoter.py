@@ -121,46 +121,59 @@ def run_quote_tweet_cycle(client: tweepy.Client) -> None:
         log.info(f"[Quoter] No qualifying tweets found (need {MIN_LIKES_TO_QUALIFY}+ likes).")
         return
 
-    # Pick the most liked tweet
-    target = max(qualified, key=lambda t: t.public_metrics.get("like_count", 0))
-    tweet_id = str(target.id)
-    tweet_text = target.text
-    likes = target.public_metrics.get("like_count", 0)
+    # Sort by likes descending — try each one until one works
+    qualified.sort(key=lambda t: t.public_metrics.get("like_count", 0), reverse=True)
 
-    log.info(f"[Quoter] Selected tweet ({likes} likes): '{tweet_text[:80]}…'")
+    for target in qualified:
+        tweet_id = str(target.id)
+        tweet_text = target.text
+        likes = target.public_metrics.get("like_count", 0)
 
-    quote_text = _generate_quote_text(tweet_text)
-    if not quote_text:
-        log.warning("[Quoter] AI returned nothing — skipping.")
-        return
+        log.info(f"[Quoter] Trying tweet ({likes} likes): '{tweet_text[:80]}…'")
 
-    try:
-        delay = random.randint(5, 15)
-        log.info(f"[Quoter] Waiting {delay}s before posting…")
-        time.sleep(delay)
+        quote_text = _generate_quote_text(tweet_text)
+        if not quote_text:
+            log.warning("[Quoter] AI returned nothing — trying next tweet.")
+            continue
 
-        response = client.create_tweet(
-            text=quote_text,
-            quote_tweet_id=tweet_id,
-        )
-        new_id = str(response.data["id"])
+        try:
+            delay = random.randint(5, 15)
+            log.info(f"[Quoter] Waiting {delay}s before posting…")
+            time.sleep(delay)
 
-        # Mark as processed so we don't quote it again
-        record_like(f"quoted_{tweet_id}")
+            response = client.create_tweet(
+                text=quote_text,
+                quote_tweet_id=tweet_id,
+            )
+            new_id = str(response.data["id"])
 
-        log.success(
-            f"[Quoter] Quote tweet posted — "
-            f"our_tweet={new_id} quoting={tweet_id} "
-            f"content='{quote_text[:60]}…'"
-        )
+            # Mark as processed so we don't quote it again
+            record_like(f"quoted_{tweet_id}")
 
-    except tweepy.errors.Forbidden as exc:
-        log.error(f"[Quoter] Forbidden (403): {exc}")
-    except tweepy.errors.TooManyRequests as exc:
-        log.warning(f"[Quoter] Rate limited (429): {exc}")
-    except KeyboardInterrupt:
-        raise
-    except Exception as exc:
-        log.error(f"[Quoter] Unexpected error: {type(exc).__name__}: {exc}")
+            log.success(
+                f"[Quoter] Quote tweet posted — "
+                f"our_tweet={new_id} quoting={tweet_id} "
+                f"content='{quote_text[:60]}…'"
+            )
+            return  # Success — stop trying
+
+        except tweepy.errors.Forbidden as exc:
+            # This tweet restricts quoting — mark it and try the next one
+            log.warning(f"[Quoter] Tweet {tweet_id} cannot be quoted — trying next.")
+            record_like(f"quoted_{tweet_id}")  # skip it next time too
+            continue
+
+        except tweepy.errors.TooManyRequests as exc:
+            log.warning(f"[Quoter] Rate limited (429): {exc}")
+            return
+
+        except KeyboardInterrupt:
+            raise
+
+        except Exception as exc:
+            log.error(f"[Quoter] Unexpected error: {type(exc).__name__}: {exc}")
+            continue
+
+    log.info("[Quoter] No quotable tweets found in this batch.")
 
     log.info("[Quoter] Quote tweet cycle complete.")
