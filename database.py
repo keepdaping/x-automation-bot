@@ -75,6 +75,14 @@ CREATE TABLE IF NOT EXISTS greeting_log (
 );
 """
 
+_CREATE_RUN_COUNTER_TABLE = """
+CREATE TABLE IF NOT EXISTS run_counter (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),  -- only ever one row
+    count      INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"""
+
 _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_posts_created_at     ON posts          (created_at);",
     "CREATE INDEX IF NOT EXISTS idx_posts_hash           ON posts          (content_hash);",
@@ -111,6 +119,7 @@ def init_db() -> None:
             _CREATE_ENGAGEMENT_LOG_TABLE,
             _CREATE_REPLIED_TABLE,
             _CREATE_GREETING_LOG_TABLE,
+            _CREATE_RUN_COUNTER_TABLE,
         ]:
             con.execute(stmt)
         for idx in _CREATE_INDEXES:
@@ -247,3 +256,27 @@ def record_greeting() -> None:
         con.execute(
             "INSERT OR IGNORE INTO greeting_log (greeting_date) VALUES (?)", (today,)
         )
+
+
+# ── Run counter ───────────────────────────────────────────────────────────────
+
+def get_and_increment_run_count() -> int:
+    """
+    Atomically increment the run counter and return the NEW value.
+    Safe across GitHub Actions restarts — persisted in SQLite, not a file.
+
+    Returns:
+        The incremented run count (starts at 1 on first ever call).
+    """
+    with _conn() as con:
+        # Ensure the single row exists
+        con.execute(
+            "INSERT OR IGNORE INTO run_counter (id, count) VALUES (1, 0)"
+        )
+        con.execute(
+            "UPDATE run_counter SET count = count + 1, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+            "WHERE id = 1"
+        )
+        row = con.execute("SELECT count FROM run_counter WHERE id = 1").fetchone()
+    return row[0]

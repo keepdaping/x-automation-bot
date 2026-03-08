@@ -14,9 +14,8 @@ Startup sequence:
 
 GitHub Actions cron handles all scheduling.
 """
-import os
 from config import Config
-from database import init_db
+from database import init_db, get_and_increment_run_count
 from auth import get_client
 from generator import generate_post, pick_topic
 from moderator import check
@@ -28,37 +27,17 @@ from engagement import run_engagement_cycle
 from logger_setup import log
 
 
-# ── Run counter helpers ───────────────────────────────────────────────────────
-
-_COUNTER_FILE = "data/run_counter.txt"
-
-
-def _get_run_count() -> int:
-    try:
-        with open(_COUNTER_FILE, "r") as f:
-            return int(f.read().strip())
-    except Exception:
-        return 0
-
-
-def _save_run_count(count: int) -> None:
-    try:
-        os.makedirs("data", exist_ok=True)
-        with open(_COUNTER_FILE, "w") as f:
-            f.write(str(count))
-    except Exception as exc:
-        log.warning(f"Could not save run counter: {exc}")
-
-
 # ── Post cycles ───────────────────────────────────────────────────────────────
 
 def run_post_cycle(client) -> None:
     """
     Every 3rd run posts a thread for higher reach.
     Other runs post a single tweet.
+
+    Run count is stored in SQLite so it persists across GitHub Actions
+    runs (which always start with a fresh workspace — no files survive).
     """
-    count = _get_run_count() + 1
-    _save_run_count(count)
+    count = get_and_increment_run_count()
 
     log.info(f"Run #{count} — {'THREAD' if count % 3 == 0 else 'SINGLE TWEET'} cycle")
 
