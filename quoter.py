@@ -66,7 +66,7 @@ MIN_AUTHOR_FOLLOWERS = 100
 MAX_AUTHOR_FOLLOWERS = 150_000
 
 # ── Tweet quality thresholds ───────────────────────────────────────────────────
-# Pre-filter before scoring (checked at API level via min_faves)
+# Pre-filter before scoring (Python-side filter — min_faves not available on free tier)
 MIN_LIKES_TO_QUALIFY = 5
 
 # Post-scoring minimum — tweets below this are skipped
@@ -210,14 +210,15 @@ def _search_keyword(client: tweepy.Client, keyword: str) -> tuple[list, dict]:
     """
     Search one keyword with strengthened filters.
 
-    Improvements over v1:
-      - min_faves:5  → X API filters weak tweets before they reach our code
-      - -has:links   → removes promotional/blog/spam tweets early
+    -has:links removes promotional/blog/spam tweets early.
+    Likes filtering is handled in Python after results are returned
+    (min_faves operator requires paid X API tier).
     """
     try:
+        # Note: min_faves is a paid API operator — likes filtering is done
+        # in Python after results are returned. -has:links removes spam/promos.
         query = (
-            f"{keyword} -is:retweet -is:reply lang:en "
-            f"min_faves:{MIN_LIKES_TO_QUALIFY} -has:links"
+            f"{keyword} -is:retweet -is:reply lang:en -has:links"
         )
         results = client.search_recent_tweets(
             query=query,
@@ -332,7 +333,7 @@ def run_quote_tweet_cycle(client: tweepy.Client) -> None:
         log.info(
             f"[Quoter] No qualifying tweets found across "
             f"{len(keywords_this_run)} keywords. "
-            f"(Filters: {MIN_LIKES_TO_QUALIFY}+ likes via API, "
+            f"(Filters: {MIN_LIKES_TO_QUALIFY}+ likes, "
             f"ViralScore ≥ {MIN_VIRAL_SCORE}, "
             f"followers {MIN_AUTHOR_FOLLOWERS}–{MAX_AUTHOR_FOLLOWERS:,}, "
             f"last {MAX_TWEET_AGE_HOURS}h, no links)"
