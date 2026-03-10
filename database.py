@@ -61,8 +61,6 @@ def save_post(text: str, tweet_id: str, topic: str, fmt: str, score: float):
 
 # Add more helper functions for quotes, replies, etc. (all implemented in full version)
 
-from datetime import datetime, date
-import sqlite3
 
 def count_posts_today() -> int:
     """
