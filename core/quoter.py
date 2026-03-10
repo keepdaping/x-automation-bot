@@ -7,25 +7,29 @@ from config import Config
 
 def find_quote_candidate(client: Client) -> str | None:
     q = random.choice(Config.SEARCH_KEYWORDS)
-    query = f'"{q}" min_faves:12 -is:retweet lang:en'
+    query = f'"{q}" -is:retweet lang:en'  # removed min_faves
 
     try:
         results = client.search_recent_tweets(
             query=query,
             max_results=10,
-            expansions=["author_id"],
-            tweet_fields=["public_metrics", "created_at"]
+            tweet_fields=["public_metrics", "created_at"],
+            expansions=["author_id"]
         )
         if not results.data:
             return None
 
-        candidates = [t for t in results.data if t.public_metrics["like_count"] >= 12]
+        # Filter in Python after fetching
+        candidates = [t for t in results.data if t.public_metrics.get("like_count", 0) >= 12]
         if not candidates:
+            log.info("No tweets with >=12 likes found — skipping quote")
             return None
 
         chosen = random.choice(candidates)
+        log.info(f"Selected quote candidate with {chosen.public_metrics['like_count']} likes")
         return chosen.id
-    except Exception as e:
+
+    except tweepy.TweepyException as e:
         log.error(f"Quote search failed: {e}")
         return None
 
