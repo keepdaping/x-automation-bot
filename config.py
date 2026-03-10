@@ -35,8 +35,9 @@ class Config:
     FRIDAY_FORMATS = ["HOOK_STORY", "THREAD", "QUOTE_STYLE", "QUESTION_LIST"]
 
     SEARCH_KEYWORDS = [
-        "freelancing tips", "AI tools 2026", "building in public",
-        "self taught developer", "side hustle", "learn to code"
+    "freelancing tips", "AI tools 2026", "building in public",
+    "self taught developer", "side hustle", "learn to code",
+    "freelance", "make money online", "indie hacker", "no code"
     ]
 
     BANNED_WORDS = ["buy my course", "follow for more", "dm me", "link in bio"]
