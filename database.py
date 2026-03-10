@@ -1,6 +1,6 @@
 import sqlite3
 import hashlib
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 from logger_setup import log
 
