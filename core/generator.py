@@ -2,6 +2,7 @@
 import random
 import time
 from typing import Tuple
+
 import anthropic
 from anthropic import Anthropic
 
@@ -45,6 +46,7 @@ Today is {weekday}. Adjust tone accordingly:
 
 Output ONLY the tweet text — no labels, no quotes, no explanations.
 Max 275 characters."""
+
 
 _FORMAT_INSTRUCTIONS = {
     "HOOK_STORY": """Start with a strong hook (question, hard truth, "True story:", "The awkward part is…"). Tell a short personal story (3–6 lines). End with punchy takeaway or open question.""",
@@ -120,7 +122,20 @@ Overall score only if ≥8.5 — otherwise explain why and suggest fixes.""",
             if attempt == Config.AI_MAX_RETRIES:
                 break
 
-    # Fallback
-    from .fallback import FALLBACK_POSTS
+    # Fallback — inline simple list (no circular import)
+    FALLBACK_POSTS = [
+        "Broke and building > comfortable and stuck.",
+        "Freelancing is just convincing strangers you can solve their problems. That's it.",
+        "Your first project doesn't need to be perfect. It needs to exist.",
+        "AI won't take your job. Someone using AI will. Learn the tools.",
+        "Most people wait until they're ready. Ready never comes. Ship it.",
+        "A $300 freelance project taught me more than 6 months of tutorials.",
+        "You don't need a degree to build things people pay for. You need to start.",
+        "Spent 3 hours debugging. The bug was a missing comma. Still counts.",
+        "Freelancing is uncomfortable. So is being broke. Pick your uncomfortable.",
+        "Took me way too long to realize clients don't pay for code. They pay for solved problems.",
+        "You're not behind. You're just comparing your chapter 1 to someone else's chapter 10.",
+        "Building alone at 2am hits different.",
+    ]
     fb = random.choice(FALLBACK_POSTS)
     return fb, "fallback", 7.0
