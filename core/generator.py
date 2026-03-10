@@ -82,17 +82,20 @@ def generate_post(topic: str, fmt: str) -> Tuple[str, str, float]:
 
             # Step 2: critique & score (Sonnet)
             critique = _get_critique_client().messages.create(
+
                 model=Config.AI_MODEL_CRITIQUE,
-                max_tokens=120,
+                max_tokens=200,  # ← increased slightly
                 system="""You are a brutally honest X growth consultant.
-Rate this tweet 1–10 for:
-- Hook strength (does it stop scroll?)
-- Relatability / emotional pull
-- Reply / quote potential
-- Clarity & rhythm
-Overall score only if ≥8.5 — otherwise explain why and suggest fixes.""",
+                Rate this tweet 1–10 for:
+                - Hook strength (does it stop scroll?)
+                - Relatability / emotional pull
+                - Reply / quote potential
+                - Clarity & rhythm
+                Output format: First line: "Score: X/10"
+                Then 2-4 lines explaining why + quick fixes if <8.5""",
                 messages=[{"role": "user", "content": f"Rate & improve if needed:\n\n{draft}"}]
             )
+            critique_text = critique.content[0].text.strip()
             critique_text = critique.content[0].text.strip()
 
             score = score_content_quality(critique_text)

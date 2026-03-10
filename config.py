@@ -18,8 +18,8 @@ class Config:
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
     # AI Models (2026)
-    AI_MODEL_DRAFT = "claude-haiku-4-5-20251001"
-    AI_MODEL_CRITIQUE = "claude-sonnet-4-6"
+    AI_MODEL_DRAFT     = "claude-haiku-4-5"
+    AI_MODEL_CRITIQUE  = "claude-sonnet-4-6"
     AI_MAX_TOKENS = 300
     AI_MAX_RETRIES = 3
 
