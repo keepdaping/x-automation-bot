@@ -60,3 +60,26 @@ def save_post(text: str, tweet_id: str, topic: str, fmt: str, score: float):
     conn.close()
 
 # Add more helper functions for quotes, replies, etc. (all implemented in full version)
+
+from datetime import datetime, date
+import sqlite3
+
+def count_posts_today() -> int:
+    """
+    Count how many posts were made today (UTC date).
+    Used to enforce daily post cap.
+    """
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_start_str = today_start.isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) 
+        FROM posts 
+        WHERE created_at >= ?
+    """, (today_start_str,))
+    
+    count = cur.fetchone()[0]
+    conn.close()
+    return count
