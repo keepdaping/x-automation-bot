@@ -1,18 +1,15 @@
 from utils.human_behavior import random_delay
 
-def quote_tweet(page, tweet, text):
+
+def reply_tweet(page, tweet, text):
 
     try:
-        quote_btn = tweet.query_selector('[data-testid="retweet"]')
+        reply_btn = tweet.query_selector('[data-testid="reply"]')
 
-        if quote_btn:
-            quote_btn.click()
+        if reply_btn:
+            reply_btn.click()
 
-            page.wait_for_selector('[data-testid="quoteTweet"]', timeout=10000)
-
-            page.click('[data-testid="quoteTweet"]')
-
-            page.wait_for_selector('[data-testid="tweetTextarea_0"]')
+            page.wait_for_selector('[data-testid="tweetTextarea_0"]', timeout=10000)
 
             page.fill('[data-testid="tweetTextarea_0"]', text)
 
@@ -21,4 +18,4 @@ def quote_tweet(page, tweet, text):
             random_delay()
 
     except Exception as e:
-        print("Quote skipped:", e)
+        print("Reply skipped:", e)
