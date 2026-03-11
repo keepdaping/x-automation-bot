@@ -1,4 +1,4 @@
-HEADLESS = True
+HEADLESS = False
 
 X_USERNAME = "keepdaping@gmail.com"
 X_PASSWORD = "Twitter@256"
