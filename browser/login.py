@@ -3,22 +3,22 @@ from config import X_USERNAME, X_PASSWORD
 
 def login(page):
 
-    # open X login page with longer timeout
-    page.goto(
-        "https://x.com/login",
-        timeout=60000,
-        wait_until="domcontentloaded"
-    )
+    # open X homepage
+    page.goto("https://x.com", timeout=60000, wait_until="domcontentloaded")
+
+    # click sign in
+    page.get_by_role("link", name="Sign in").click()
 
     # wait for username field
-    page.wait_for_selector('input[name="text"]', timeout=60000)
+    page.wait_for_selector('input[autocomplete="username"]', timeout=60000)
 
-    page.fill('input[name="text"]', X_USERNAME)
+    # enter username
+    page.fill('input[autocomplete="username"]', X_USERNAME)
     page.keyboard.press("Enter")
 
     time.sleep(3)
 
-    # password
+    # wait for password
     page.wait_for_selector('input[name="password"]', timeout=60000)
 
     page.fill('input[name="password"]', X_PASSWORD)
