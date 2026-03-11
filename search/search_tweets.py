@@ -12,4 +12,6 @@ def search_tweets(page, keyword):
 
     tweets = page.query_selector_all("article")
 
+    page.mouse.wheel(0, 1200)
+
     return tweets[:5]
