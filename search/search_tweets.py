@@ -1,4 +1,5 @@
-from utils.human_behavior import random_delay, random_scroll
+from utils.human_behavior import random_delay
+
 
 def search_tweets(page, keyword):
 
@@ -8,10 +9,10 @@ def search_tweets(page, keyword):
 
     random_delay()
 
-    random_scroll(page)
+    page.mouse.wheel(0, 1500)
 
-    tweets = page.query_selector_all("article")
+    page.wait_for_timeout(2000)
 
-    page.mouse.wheel(0, 1200)
+    tweets = page.locator("article").all()
 
     return tweets[:5]
