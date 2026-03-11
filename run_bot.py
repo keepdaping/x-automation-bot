@@ -1,23 +1,12 @@
 import time
+import random
 
-from browser.browser_manager import BrowserManager
-from core.engagement import run_engagement
+while True:
 
+    run_engagement(page)
 
-def main():
+    sleep_time = random.randint(90, 180)
 
-    browser = BrowserManager()
+    print(f"Cycle complete. Sleeping {sleep_time}s")
 
-    page = browser.start()
-
-    while True:
-
-        run_engagement(page)
-
-        print("Cycle complete. Sleeping...")
-
-        time.sleep(120)
-
-
-if __name__ == "__main__":
-    main()
+    time.sleep(sleep_time)
