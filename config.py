@@ -1,6 +1,6 @@
 HEADLESS = True
 
-X_USERNAME = "keepdapingB"
+X_USERNAME = "keepdaping@gmail.com"
 X_PASSWORD = "Twitter@256"
 
 KEYWORDS = [

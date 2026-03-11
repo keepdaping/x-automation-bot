@@ -1,28 +1,34 @@
 import time
 from config import X_USERNAME, X_PASSWORD
 
+
 def login(page):
 
-    # Go directly to the login flow
+    print("Opening login page...")
+
     page.goto(
         "https://x.com/i/flow/login",
         timeout=60000,
         wait_until="domcontentloaded"
     )
 
-    # Wait for username input
-    page.wait_for_selector('input[name="text"]', timeout=60000)
+    # wait for any input field to appear
+    page.wait_for_selector("input", timeout=60000)
 
-    # Enter username
-    page.fill('input[name="text"]', X_USERNAME)
+    print("Typing username...")
+
+    username = page.locator('input[name="text"]').first
+    username.fill(X_USERNAME)
+
     page.keyboard.press("Enter")
 
     time.sleep(3)
 
-    # Wait for password field
-    page.wait_for_selector('input[name="password"]', timeout=60000)
+    print("Typing password...")
 
-    page.fill('input[name="password"]', X_PASSWORD)
+    password = page.locator('input[name="password"]').first
+    password.fill(X_PASSWORD)
+
     page.keyboard.press("Enter")
 
     time.sleep(6)
