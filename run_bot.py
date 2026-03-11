@@ -8,7 +8,7 @@ def main():
 
     page = browser.start()
 
-    login(page)
+    #login(page)
 
     run_engagement(page)
 
