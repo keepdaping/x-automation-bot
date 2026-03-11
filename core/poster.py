@@ -36,6 +36,15 @@ def post_tweet(client: Client, text: str, topic: str, fmt: str, score: float) ->
 
         response = client.create_tweet(text=text)
         tweet_id = response.data["id"]
+
+        save_post(
+            text,
+            tweet_id,
+            str(topic),
+            str(fmt),
+            float(score)
+        )
+
         log.success(f"Posted tweet → {tweet_id} | score {score:.1f}")
 
         save_post(text, tweet_id, topic, fmt, score)
