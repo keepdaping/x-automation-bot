@@ -27,12 +27,10 @@ class Config:
     AI_MAX_RETRIES = 3
 
     # Growth limits
-    MAX_POSTS_PER_DAY = 4
-    MIN_INTERVAL_MINUTES = 90
     MAX_LIKES_PER_HOUR = 20
     MAX_REPLIES_PER_HOUR = 5
     MAX_QUOTES_PER_DAY = 3
-
+    MAX_POSTS_PER_DAY = 4
     # Topics
     FRIDAY_TOPICS = [
         "learning to code",

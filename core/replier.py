@@ -1,10 +1,11 @@
 # core/replier.py
 
 import random
+import time
 from tweepy import Client
 from logger_setup import log
 from core.moderator import is_safe_content
-
+from database import can_reply, log_engagement
 
 SEARCH_QUERY = (
     "AI OR coding OR programming OR startups OR automation "
@@ -48,6 +49,11 @@ def generate_reply_text(parent_text: str) -> str | None:
 
 def reply_to_tweets(client: Client):
 
+    # Safety guard
+    if not can_reply():
+        log.info("Reply limit reached — skipping reply engine")
+        return
+
     tweets = client.search_recent_tweets(
         query=SEARCH_QUERY,
         max_results=10
@@ -59,6 +65,11 @@ def reply_to_tweets(client: Client):
 
     for tweet in tweets.data:
 
+        # Check rate limit again inside loop
+        if not can_reply():
+            log.info("Reply limit reached mid-run")
+            return
+
         if not should_reply_to(tweet.text):
             continue
 
@@ -69,10 +80,16 @@ def reply_to_tweets(client: Client):
 
         try:
 
+            # Human-like delay
+            time.sleep(random.uniform(5, 15))
+
             client.create_tweet(
                 text=reply,
                 in_reply_to_tweet_id=tweet.id
             )
+
+            # Log engagement
+            log_engagement("reply", tweet.id)
 
             log.success(f"Replied to tweet {tweet.id}")
 
