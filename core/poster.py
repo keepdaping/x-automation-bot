@@ -5,6 +5,7 @@ from tweepy import Client
 from logger_setup import log
 from database import save_post, is_duplicate
 from config import Config
+from .moderator import is_safe_content   # ✅ FIX ADDED
 
 
 def can_post_today(client: Client) -> bool:
