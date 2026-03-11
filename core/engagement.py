@@ -1,23 +1,76 @@
 # core/engagement.py
+
 import time
 import random
 from tweepy import Client
 from logger_setup import log
 
 
-def engage_with_replies(client: Client, tweet_id: str, already_liked: set):
+SEARCH_QUERY = (
+    "AI OR coding OR programming OR startups OR automation "
+    "-is:retweet lang:en min_faves:20"
+)
+
+
+def engage_with_posts(client: Client):
+
     try:
-        replies = client.get_tweets(
-            id=tweet_id,
-            expansions=["referenced_tweets.id"],
-            tweet_fields=["conversation_id", "in_reply_to_user_id"]
+
+        tweets = client.search_recent_tweets(
+            query=SEARCH_QUERY,
+            max_results=10
         )
-        # very simplified
-        for reply in (replies.data or []):
-            if reply.id not in already_liked:
-                time.sleep(random.uniform(4, 18))
-                client.like(reply.id)
-                already_liked.add(reply.id)
-                log.info(f"Liked reply {reply.id}")
+
+        if not tweets.data:
+            log.info("No tweets found for engagement")
+            return
+
+        for tweet in tweets.data:
+
+            delay = random.uniform(4, 18)
+            time.sleep(delay)
+
+            try:
+                client.like(tweet.id)
+                log.info(f"Liked tweet {tweet.id}")
+
+            except Exception as e:
+                log.warning(f"Like failed: {e}")
+
     except Exception as e:
+
+        log.warning(f"Engagement search failed: {e}")
+
+
+def engage_with_replies(client: Client, tweet_id: str, already_liked: set):
+
+    try:
+
+        replies = client.search_recent_tweets(
+            query=f"conversation_id:{tweet_id}",
+            max_results=10
+        )
+
+        for reply in (replies.data or []):
+
+            if reply.id in already_liked:
+                continue
+
+            delay = random.uniform(4, 18)
+            time.sleep(delay)
+
+            try:
+
+                client.like(reply.id)
+
+                already_liked.add(reply.id)
+
+                log.info(f"Liked reply {reply.id}")
+
+            except Exception as e:
+
+                log.warning(f"Reply engagement failed: {e}")
+
+    except Exception as e:
+
         log.warning(f"Engagement error: {e}")
