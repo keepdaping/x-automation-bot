@@ -9,7 +9,7 @@ from database import can_reply, log_engagement
 
 SEARCH_QUERY = (
     "AI OR coding OR programming OR startups OR automation "
-    "-is:retweet lang:en min_faves:50"
+    "-is:retweet lang:en"
 )
 
 

@@ -12,7 +12,7 @@ def find_quote_candidate(client: Client) -> str | None:
 
     q = random.choice(Config.SEARCH_KEYWORDS)
 
-    query = f'"{q}" -is:retweet lang:en min_faves:5'
+    query = f'"{q}" -is:retweet lang:en'
 
     try:
 
