@@ -1,28 +1,8 @@
-# core/scheduler.py
-
-import random
-from apscheduler.schedulers.blocking import BlockingScheduler
+from main import main as one_run
+from core.scheduler import start_scheduler
 from logger_setup import log
 
 
-def start_scheduler(job_func):
-
-    scheduler = BlockingScheduler()
-
-    interval = random.randint(90, 110)
-
-    scheduler.add_job(
-        job_func,
-        "interval",
-        minutes=interval
-    )
-
-    log.info(f"Scheduler started — running every ~{interval} minutes")
-
-    try:
-
-        scheduler.start()
-
-    except (KeyboardInterrupt, SystemExit):
-
-        scheduler.shutdown()
+if __name__ == "__main__":
+    log.info("Starting persistent mode (use Ctrl+C to stop)")
+    start_scheduler(one_run)
