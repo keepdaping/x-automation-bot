@@ -3,27 +3,28 @@ from config import X_USERNAME, X_PASSWORD
 
 def login(page):
 
-    # open X homepage
-    page.goto("https://x.com", timeout=60000, wait_until="domcontentloaded")
+    # Go directly to the login flow
+    page.goto(
+        "https://x.com/i/flow/login",
+        timeout=60000,
+        wait_until="domcontentloaded"
+    )
 
-    # click sign in
-    page.get_by_role("link", name="Sign in").click()
+    # Wait for username input
+    page.wait_for_selector('input[name="text"]', timeout=60000)
 
-    # wait for username field
-    page.wait_for_selector('input[autocomplete="username"]', timeout=60000)
-
-    # enter username
-    page.fill('input[autocomplete="username"]', X_USERNAME)
+    # Enter username
+    page.fill('input[name="text"]', X_USERNAME)
     page.keyboard.press("Enter")
 
     time.sleep(3)
 
-    # wait for password
+    # Wait for password field
     page.wait_for_selector('input[name="password"]', timeout=60000)
 
     page.fill('input[name="password"]', X_PASSWORD)
     page.keyboard.press("Enter")
 
-    time.sleep(5)
+    time.sleep(6)
 
     print("Logged into X successfully")
