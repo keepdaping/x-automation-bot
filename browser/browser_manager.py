@@ -66,5 +66,27 @@ class BrowserManager:
         page = context.pages[0] if context.pages else context.new_page()
 
         page.goto("https://x.com", wait_until="domcontentloaded", timeout=15000)
+        
+        # Close cookie consent modal if present
+        try:
+            # Look for and close the cookie/consent modal
+            modal_selectors = [
+                '[data-testid="twc-cc-mask"]',  # Cookie mask
+                '[role="dialog"]',               # Generic dialog
+                'button:has-text("Accept all")',
+                'button:has-text("Agree")',
+            ]
+            
+            for selector in modal_selectors:
+                try:
+                    element = page.locator(selector).first
+                    if element.is_visible(timeout=500):
+                        # Try to close it by pressing Escape
+                        page.press("body", "Escape")
+                        break
+                except:
+                    pass
+        except Exception as e:
+            pass  # Continue even if modal closing fails
 
         return page
