@@ -80,13 +80,17 @@ def generate_post(topic: str, fmt: str) -> Tuple[str, str, float]:
 
     for attempt in range(1, Config.AI_MAX_RETRIES + 1):
         try:
-            draft_msg = draft_client.messages.create(
-                model=Config.AI_MODEL_DRAFT,
-                max_tokens=Config.AI_MAX_TOKENS,
-                system=system,
-                messages=[{
-                    "role": "user",
-                    "content": f"""Topic: {topic}
+            # Try each model until one works
+            draft_msg = None
+            for model in Config.AI_MODELS_TO_TRY:
+                try:
+                    draft_msg = draft_client.messages.create(
+                        model=model,
+                        max_tokens=Config.AI_MAX_TOKENS,
+                        system=system,
+                        messages=[{
+                            "role": "user",
+                            "content": f"""Topic: {topic}
 
 Write a tweet based on:
 
@@ -95,8 +99,17 @@ Write a tweet based on:
 * lessons learned
 * things beginners misunderstand
 """
-                }]
-            )
+                        }]
+                    )
+                    log.debug(f"✓ generate_post using model: {model}")
+                    break
+                except Exception as e:
+                    log.debug(f"Model {model} failed for generate_post: {str(e)[:40]}")
+                    continue
+            
+            if not draft_msg:
+                log.warning(f"All models failed for generate_post attempt {attempt}")
+                continue
 
             draft = draft_msg.content[0].text.strip()
 
@@ -104,10 +117,15 @@ Write a tweet based on:
                 log.warning("Draft invalid length — retrying")
                 continue
 
-            critique = _get_critique_client().messages.create(
-                model=Config.AI_MODEL_CRITIQUE,
-                max_tokens=200,
-                system="""You are a brutally honest X growth consultant.
+            # Try critique with multiple models
+            critique = None
+            critique_client = _get_critique_client()
+            for model in Config.AI_MODELS_TO_TRY:
+                try:
+                    critique = critique_client.messages.create(
+                        model=model,
+                        max_tokens=200,
+                        system="""You are a brutally honest X growth consultant.
 
 Rate this tweet 1–10 for:
 
@@ -122,8 +140,17 @@ Output:
 Score: X/10
 Then explain briefly why.
 """,
-                messages=[{"role": "user", "content": draft}]
-            )
+                        messages=[{"role": "user", "content": draft}]
+                    )
+                    log.debug(f"✓ critique using model: {model}")
+                    break
+                except Exception as e:
+                    log.debug(f"Model {model} failed for critique: {str(e)[:40]}")
+                    continue
+            
+            if not critique:
+                log.warning(f"All models failed for critique attempt {attempt}")
+                continue
 
             critique_text = critique.content[0].text.strip()
 
@@ -144,12 +171,25 @@ Critique:
 Improve hook and relatability.
 """
 
-            rewrite_msg = _get_critique_client().messages.create(
-                model=Config.AI_MODEL_CRITIQUE,
-                max_tokens=Config.AI_MAX_TOKENS,
-                system=system,
-                messages=[{"role": "user", "content": rewrite_prompt}]
-            )
+            # Try rewrite with multiple models
+            rewrite_msg = None
+            for model in Config.AI_MODELS_TO_TRY:
+                try:
+                    rewrite_msg = critique_client.messages.create(
+                        model=model,
+                        max_tokens=Config.AI_MAX_TOKENS,
+                        system=system,
+                        messages=[{"role": "user", "content": rewrite_prompt}]
+                    )
+                    log.debug(f"✓ rewrite using model: {model}")
+                    break
+                except Exception as e:
+                    log.debug(f"Model {model} failed for rewrite: {str(e)[:40]}")
+                    continue
+            
+            if not rewrite_msg:
+                log.warning(f"All models failed for rewrite attempt {attempt}")
+                continue
 
             final = rewrite_msg.content[0].text.strip()
 
@@ -194,13 +234,28 @@ Rules:
 * no emojis
 """
 
-        resp = client.messages.create(
-            model=Config.AI_MODEL_DRAFT,
-            max_tokens=80,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        return resp.content[0].text.strip()
+        # Try each model in order until one works
+        for model in Config.AI_MODELS_TO_TRY:
+            try:
+                resp = client.messages.create(
+                    model=model,
+                    max_tokens=80,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                log.debug(f"✓ Using model: {model}")
+                return resp.content[0].text.strip()
+            except Exception as model_error:
+                log.debug(f"Model {model} failed: {str(model_error)[:50]}")
+                continue
+        
+        # If all models fail, return a default response
+        log.warning(f"All models failed, using default response")
+        return random.choice([
+            "Interesting perspective.",
+            "That's a good point.",
+            "I hadn't thought about it that way.",
+            "Makes sense."
+        ])
 
     except Exception as e:
         log.error(f"Reply generation failed: {e}")

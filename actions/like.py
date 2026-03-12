@@ -17,25 +17,39 @@ def like_tweet(tweet, page=None, timeout=5000):
         bool: True if successful, False otherwise
     """
     try:
+        # Check if element is still attached to DOM
+        try:
+            is_visible = tweet.is_visible(timeout=500)
+        except:
+            log.warning("Tweet element no longer attached to DOM")
+            return False
+        
         # Find like button within tweet
         like_btn = tweet.locator(LIKE_BUTTON).first
         
         if not like_btn:
-            log.warning("Like button not found")
+            log.warning("Like button not found in tweet")
             return False
         
         # Check if button is visible
-        if not like_btn.is_visible(timeout=1000):
-            log.warning("Like button not visible")
+        try:
+            if not like_btn.is_visible(timeout=1000):
+                log.warning("Like button not visible")
+                return False
+        except:
+            log.warning("Like button element not attached")
             return False
         
-        # Scroll into view if needed
-        like_btn.scroll_into_view_if_needed()
-        time.sleep(0.3)
+        # Scroll into view if needed with error handling
+        try:
+            like_btn.scroll_into_view_if_needed(timeout=2000)
+            time.sleep(0.3)
+        except Exception as e:
+            log.debug(f"Scroll into view failed: {e}, trying force click")
         
         # Click with slight delay (human-like)
         try:
-            like_btn.click(timeout=timeout, force=False)
+            like_btn.click(timeout=timeout, force=True)
             log.debug("✓ Tweet liked")
             random_delay()  # Add delay after action
             return True

@@ -80,48 +80,26 @@ BROWSER_CONTEXT_OPTIONS = {
 }
 
 LAUNCH_ARGS = [
-    # Disable detection methods
+    # Core anti-detection
     "--disable-blink-features=AutomationControlled",
     "--disable-dev-shm-usage",
-    "--disable-web-security",
     
-    # Proper flags for Linux (for GitHub Actions)
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--no-pings",
-    "--no-service-autorun",
-    "--disable-component-update",
-    
-    # Disable extensions
+    # Disable extensions and features that reveal automation
     "--disable-extensions",
     "--disable-sync",
-    "--disable-default-apps",
     
-    # Background network
-    "--disable-background-networking",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-breakpad",
-    
-    # Client-side detection
-    "--disable-client-side-phishing-detection",
-    "--disable-default-apps",
-    "--disable-hang-monitor",
-    
-    # Popup/prompt handling
+    # Some X-specific detection avoiding
     "--disable-popup-blocking",
     "--disable-prompt-on-repost",
     
-    # Other features
-    "--enable-automation=false",
-    "--disable-translate",
-    "--disable-update-ui",
+    # Memory management
+    "--disable-background-networking",
+    "--disable-background-timer-throttling",
     
-    # Performance
-    "--metrics-recording-only",
-    "--password-store=basic",
-    "--use-mock-keychain",
-    "--export-tagged-pdf",
+    # Standard flags for stability
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--no-pings",
 ]
 
 CONTEXT_EXTRA_OPTIONS = {

@@ -9,9 +9,21 @@ class Config:
     # API KEY
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-    # AI models
-    AI_MODEL_DRAFT = "claude-3-haiku-20240307"
-    AI_MODEL_CRITIQUE = "claude-3-sonnet-20240229"
+    # AI models - tries these in order, uses first one that works
+    # List of models to try when generating replies
+    AI_MODELS_TO_TRY = [
+        "claude-opus-4-1",
+        "claude-opus-4",
+        "claude-3-opus-20240229",
+        "claude-3.5-sonnet",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-sonnet-20240229",
+        "claude-3-haiku-20240307",
+    ]
+    
+    # Default to first model (will try in order if it fails)
+    AI_MODEL_DRAFT = AI_MODELS_TO_TRY[0]
+    AI_MODEL_CRITIQUE = AI_MODELS_TO_TRY[0]
 
     # AI limits
     AI_MAX_TOKENS = 200

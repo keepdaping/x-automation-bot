@@ -27,43 +27,67 @@ def search_tweets(page, keyword, max_results=5, timeout=15000):
         
         # Navigate to search results
         try:
-            page.goto(search_url, wait_until="domcontentloaded", timeout=timeout)
+            page.goto(search_url, wait_until="networkidle", timeout=timeout)
         except:
-            log.warning(f"Search timeout, retrying with longer wait...")
-            page.goto(search_url, timeout=timeout + 5000)
+            log.warning(f"Search timeout with networkidle, trying load...")
+            try:
+                page.goto(search_url, wait_until="load", timeout=timeout)
+            except:
+                log.warning(f"Search timeout, navigating without wait...")
+                page.goto(search_url)
         
-        # Wait for results to load
-        time.sleep(2)
+        # Wait longer for JavaScript to render tweets
+        time.sleep(4)
         
-        # Dismiss any overlays that might block interactions
+        # Dismiss any overlays
         try:
-            page.press("body", "Escape")
+            page.press("Escape")
             time.sleep(0.5)
         except:
             pass
         
-        # Apply natural scrolling behavior
-        natural_scroll(page, pixels=1500, delay_between_scrolls=300)
+        # Scroll to trigger lazy-loading
+        log.info("Scrolling to load tweets...")
+        for i in range(3):
+            page.evaluate("window.scrollBy(0, 500)")
+            time.sleep(1)
         
-        time.sleep(2)
+        # Scroll back to top
+        page.evaluate("window.scrollTo(0, 0)")
+        time.sleep(1)
         
-        # Get all tweet articles
-        try:
-            page.wait_for_selector(TWEET_ARTICLE, timeout=5000)
-            all_tweets = page.locator(TWEET_ARTICLE).all()
-            
-            if not all_tweets:
-                log.warning(f"No tweets found for '{keyword}'")
-                return []
-            
-            log.info(f"Found {len(all_tweets)} tweets, returning top {max_results}")
-            
-            # Return limited results
-            return all_tweets[:max_results]
+        # Try multiple selectors for tweets
+        all_tweets = []
+        selectors_to_try = [
+            "article",  # Most common
+            "[role='article']",
+            "[data-testid='tweet']",
+            "div[lang]",  # X uses lang attributes on tweet containers
+        ]
         
-        except Exception as e:
-            log.error(f"Error waiting for tweets: {e}")
+        for selector in selectors_to_try:
+            try:
+                log.info(f"Trying selector: {selector}")
+                # Wait for at least one element
+                page.wait_for_selector(selector, timeout=5000)
+                elements = page.locator(selector).all()
+                
+                if elements and len(elements) > 0:
+                    log.info(f"Found {len(elements)} elements with selector '{selector}'")
+                    all_tweets = elements
+                    break
+            except Exception as e:
+                log.debug(f"Selector '{selector}' failed: {e}")
+                continue
+        
+        if not all_tweets:
+            log.warning(f"No tweets found for '{keyword}'")
             return []
+        
+        log.info(f"Found {len(all_tweets)} tweets, returning top {min(max_results, len(all_tweets))}")
+        
+        # Return limited results
+        return all_tweets[:max_results]
     
     except Exception as e:
         log.error(f"Search failed for '{keyword}': {e}")
