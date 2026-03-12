@@ -9,6 +9,7 @@ from core.rate_limiter import init_rate_limiter
 from core.error_handler import init_error_handler
 from core.session_manager import init_session_manager
 from config import Config
+from database import init_db
 from logger_setup import log
 from utils.performance_tracker import PerformanceTracker
 
@@ -19,6 +20,9 @@ class BotController:
         self.page = None
         self.tracker = PerformanceTracker()
         self.running = True
+        
+        # Initialize databases
+        init_db()  # Initialize main bot database (posts, replies, etc.)
         
         # Validate configuration BEFORE starting bot
         # This must happen at startup, not import time, to allow GitHub Actions
