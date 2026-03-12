@@ -16,29 +16,18 @@ def run_engagement(page):
     tweets = search_tweets(page, "AI")
 
     for tweet in tweets:
-
         metrics = get_tweet_metrics(tweet)
         score = score_tweet(metrics)
 
         print("Metrics:", metrics, "Score:", score)
 
-        # skip extremely dead tweets
-        if score < 1:
-            continue
-
-        # like tweets frequently
         if random.random() < 0.6:
             like_tweet(tweet)
 
-        # reply sometimes
         if random.random() < 0.25:
-
             tweet_text = get_tweet_text(tweet)
-
             reply = generate_contextual_reply(tweet_text)
-
             reply_tweet(page, tweet, reply)
 
-        # follow sometimes
         if random.random() < 0.15:
             follow_user(tweet)
