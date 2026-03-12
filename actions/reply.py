@@ -1,28 +1,71 @@
-from utils.human_behavior import random_delay
+import time
+from utils.human_behavior import random_delay, random_delay_range
+from utils.selectors import REPLY_BUTTON, REPLY_TEXTAREA
+from logger_setup import log
 
 
-def reply_tweet(page, tweet, text):
-
+def reply_tweet(page, tweet, text, timeout=10000):
+    """
+    Reply to a tweet with text
+    
+    Args:
+        page: Playwright page object
+        tweet: Tweet element (article)
+        text: Reply text
+        timeout: Action timeout
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
     try:
-
-        reply_btn = tweet.locator('[data-testid="reply"]').first
-
-        if reply_btn:
-
-            reply_btn.scroll_into_view_if_needed()
-
-            page.wait_for_timeout(500)
-
-            reply_btn.click(timeout=5000)
-
-            page.wait_for_selector('[data-testid="tweetTextarea_0"]', timeout=5000)
-
-            page.fill('[data-testid="tweetTextarea_0"]', text)
-
-            page.keyboard.press("Control+Enter")
-
-            random_delay()
-
+        # Find reply button
+        reply_btn = tweet.locator(REPLY_BUTTON).first
+        
+        if not reply_btn:
+            log.warning("Reply button not found")
+            return False
+        
+        # Scroll into view
+        reply_btn.scroll_into_view_if_needed()
+        time.sleep(0.5)
+        
+        # Click reply button
+        try:
+            reply_btn.click(timeout=timeout)
+        except:
+            log.warning("Gentle click failed, force clicking...")
+            reply_btn.click(timeout=timeout, force=True)
+        
+        # Wait for reply textarea to appear
+        page.wait_for_selector(REPLY_TEXTAREA, timeout=timeout)
+        time.sleep(1)
+        
+        # Find and fill textarea
+        text_area = page.locator(REPLY_TEXTAREA).first
+        if not text_area:
+            text_area = page.locator("div[role='textbox']").first
+        
+        if text_area:
+            # Type reply text with human-like speed
+            text_area.click()
+            time.sleep(0.3)
+            # Type slowly to seem human
+            for char in text:
+                text_area.type(char)
+                time.sleep(0.01 + random_delay_range(0, 0.05))
+        else:
+            log.error("Could not find textarea for reply")
+            return False
+        
+        # Submit reply
+        time.sleep(1)
+        page.keyboard.press("Control+Enter")
+        time.sleep(1.5)
+        
+        log.debug(f"✓ Reply posted")
+        random_delay()
+        return True
+    
     except Exception as e:
-
-        print("Reply skipped:", e)
+        log.warning(f"Failed to reply: {e}")
+        return False

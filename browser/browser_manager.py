@@ -1,92 +1,136 @@
 from playwright.sync_api import sync_playwright
 import os
 import json
+import time
+from browser.stealth import (
+    inject_stealth_script,
+    dismiss_cookie_modal,
+    LAUNCH_ARGS,
+    BROWSER_CONTEXT_OPTIONS,
+    CONTEXT_EXTRA_OPTIONS,
+)
+from logger_setup import log
 
 # Use a dedicated automation profile instead of main Chrome profile to avoid slowdowns
-CHROME_PROFILE = r"C:\Users\MAI-WAY\AppData\Local\Google\Chrome\AutomationBot"
+CHROME_PROFILE = os.path.expanduser(
+    "~/.config/x-bot-automation/chrome"  # Linux/Mac compatible path
+)
 SESSION_FILE = "session.json"
 
+
 class BrowserManager:
+    def __init__(self):
+        self.p = None
+        self.context = None
+        self.page = None
+        self.retry_count = 0
+        self.max_retries = 3
 
     def start(self):
-
-        self.p = sync_playwright().start()
-
-        # Launch persistent context WITHOUT storage_state
-        # (storage_state is only for new_context, not launch_persistent_context)
-        context = self.p.chromium.launch_persistent_context(
-            user_data_dir=CHROME_PROFILE,
-            channel="chrome",
-            headless=True,
-            timeout=300000,  # Increase timeout to 5 minutes
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
-            args=[
-                "--start-maximized",
-                "--disable-blink-features=AutomationControlled",  # Hide automation signals
-                "--disable-dev-shm-usage",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-component-update",
-                "--disable-extensions",
-                "--disable-sync",
-                "--disable-default-apps",
-                "--disable-background-networking",
-                "--disable-background-timer-throttling",
-                "--disable-breakpad",
-                "--disable-client-side-phishing-detection",
-                "--disable-hang-monitor",
-                "--disable-popup-blocking",
-                "--disable-prompt-on-repost",
-                "--enable-automation=false",
-            ]
-        )
-        
-        # Load saved session if available
-        if os.path.exists(SESSION_FILE):
-            try:
-                with open(SESSION_FILE, 'r') as f:
-                    session_data = json.load(f)
-                    cookies = session_data.get("cookies", [])
-                    context.add_cookies(cookies)
-                print(f"✓ Loaded {len(cookies)} cookies from session.json")
-            except Exception as e:
-                print(f"⚠ Warning: Could not load session file: {e}")
-        
-        # Inject stealth script to hide automation
-        context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined,
-            });
-            window.chrome = {
-                runtime: {}
-            };
-        """)
-
-        page = context.pages[0] if context.pages else context.new_page()
-
-        page.goto("https://x.com", wait_until="domcontentloaded", timeout=15000)
-        
-        # Close cookie consent modal if present
+        """Launch browser and load authenticated session"""
         try:
-            # Look for and close the cookie/consent modal
-            modal_selectors = [
-                '[data-testid="twc-cc-mask"]',  # Cookie mask
-                '[role="dialog"]',               # Generic dialog
-                'button:has-text("Accept all")',
-                'button:has-text("Agree")',
-            ]
-            
-            for selector in modal_selectors:
-                try:
-                    element = page.locator(selector).first
-                    if element.is_visible(timeout=500):
-                        # Try to close it by pressing Escape
-                        page.press("body", "Escape")
-                        break
-                except:
-                    pass
-        except Exception as e:
-            pass  # Continue even if modal closing fails
+            log.info("Starting browser...")
+            self.p = sync_playwright().start()
 
-        return page
+            # Merge all context options
+            context_opts = {**BROWSER_CONTEXT_OPTIONS, **CONTEXT_EXTRA_OPTIONS}
+
+            # Launch persistent context
+            self.context = self.p.chromium.launch_persistent_context(
+                user_data_dir=CHROME_PROFILE,
+                channel="chrome",
+                headless=True,
+                timeout=30000,  # 30 second timeout
+                args=LAUNCH_ARGS,
+                **context_opts,
+            )
+
+            log.info("✓ Browser launched successfully")
+
+            # Load cookies from session.json if available
+            if os.path.exists(SESSION_FILE):
+                try:
+                    with open(SESSION_FILE, "r") as f:
+                        session_data = json.load(f)
+                        cookies = session_data.get("cookies", [])
+                        
+                        if cookies:
+                            self.context.add_cookies(cookies)
+                            log.info(f"✓ Loaded {len(cookies)} cookies from session.json")
+                        else:
+                            log.warning("⚠ session.json found but no cookies present")
+                except Exception as e:
+                    log.error(f"Error loading session: {e}")
+
+            # Get or create page
+            self.page = (
+                self.context.pages[0] if self.context.pages else self.context.new_page()
+            )
+
+            # Inject stealth scripts
+            inject_stealth_script(self.page)
+
+            # Navigate to X home
+            log.info("Loading X.com...")
+            try:
+                self.page.goto(
+                    "https://x.com/home",
+                    wait_until="domcontentloaded",
+                    timeout=15000,
+                )
+            except:
+                # Fallback if /home doesn't work
+                self.page.goto(
+                    "https://x.com",
+                    wait_until="domcontentloaded",
+                    timeout=15000,
+                )
+
+            time.sleep(2)
+
+            # Dismiss overlays
+            log.info("Dismissing modals...")
+            dismiss_cookie_modal(self.page)
+            time.sleep(1)
+
+            log.info("✓ Browser ready for automation")
+            return self.page
+
+        except Exception as e:
+            log.error(f"Failed to start browser: {e}")
+            if self.retry_count < self.max_retries:
+                self.retry_count += 1
+                log.info(f"Retrying... ({self.retry_count}/{self.max_retries})")
+                time.sleep(5)
+                return self.start()
+            else:
+                raise
+
+    def close(self):
+        """Gracefully close browser"""
+        try:
+            if self.context:
+                self.context.close()
+            if self.p:
+                self.p.stop()
+            log.info("Browser closed")
+        except Exception as e:
+            log.error(f"Error closing browser: {e}")
+
+    def restart(self):
+        """Restart browser if needed"""
+        log.warning("Restarting browser...")
+        self.close()
+        time.sleep(2)
+        return self.start()
+
+    def check_authenticated(self):
+        """Check if currently authenticated to X"""
+        try:
+            # If we can access home feed, we're authenticated
+            self.page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=10000)
+            # Check for home timeline
+            self.page.wait_for_selector("[data-testid='primaryColumn']", timeout=5000)
+            return True
+        except:
+            return False
