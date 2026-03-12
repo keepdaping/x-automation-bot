@@ -260,7 +260,20 @@ class RateLimiter:
         """Update daily summary counts"""
         
         today = date.today()
-        count_column = action_type
+        
+        # Map action type to column name (singular -> plural)
+        column_map = {
+            "like": "likes",
+            "reply": "replies",
+            "follow": "follows",
+            "post": "posts",
+            "error": "errors"
+        }
+        
+        count_column = column_map.get(action_type)
+        if not count_column:
+            log.warning(f"Unknown action type for daily summary: {action_type}")
+            return
         
         try:
             # Check if today's record exists
@@ -279,7 +292,7 @@ class RateLimiter:
                     (new_count, today)
                 )
             else:
-                # Create new daily record
+                # Create new daily record with all columns
                 self.db.execute(
                     f"""INSERT INTO daily_summary (date, {count_column}) 
                        VALUES (?, 1)""",
