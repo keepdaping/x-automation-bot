@@ -78,31 +78,57 @@ def random_pause(min_sec=2, max_sec=8):
     time.sleep(pause_time)
 
 
-def human_typing(element, text, delay_per_char_ms=50):
+def human_typing(element, text, wpm: int = 60):
     """
-    Type text slowly to simulate human typing
+    Type text at realistic human speed (WPM-based).
     
     Args:
         element: Playwright element
         text: Text to type
-        delay_per_char_ms: Base delay between characters
+        wpm: Words per minute (default 60 = average typing speed)
+        
+    How it works:
+    - 60 WPM = ~300 words/min ≈ 1500 chars/min
+    - = ~25 chars/second ≈ 40ms per character
+    - With pauses after punctuation and randomness
+    
+    This prevents detection as bot (was 10x too fast before!)
     """
     try:
+        # Convert WPM to character delay in milliseconds
+        # 5 characters per word average
+        base_delay_ms = (60000 / wpm) / 5
+        
+        # Click to focus and prepare for typing
         element.click()
         time.sleep(0.2)
         
-        for char in text:
-            # Variable typing speed (humans don't type at constant speed)
-            if char in [" ", ".", ",", "!", "?"]:
-                # Slightly longer pause after punctuation
-                char_delay = delay_per_char_ms + random.randint(50, 150)
+        for i, char in enumerate(text):
+            # Variable delay based on character type
+            if char in [" ", ".", ",", "!", "?", ";", ":"]:
+                # Longer pause after punctuation (humans look up)
+                char_delay_ms = base_delay_ms * 1.5
+            elif i > 0 and text[i-1] in [".", "!", "?"]:
+                # Pause after sentence-ending punctuation is longer
+                char_delay_ms = base_delay_ms * 1.3
+            elif char.isupper():
+                # Shift key takes slightly longer
+                char_delay_ms = base_delay_ms * 1.1
             else:
-                char_delay = delay_per_char_ms + random.randint(-20, 50)
+                # Regular character
+                char_delay_ms = base_delay_ms
             
+            # Add randomness (±25%) to avoid pattern detection
+            randomization = random.uniform(0.75, 1.25)
+            final_delay_ms = char_delay_ms * randomization
+            
+            # Type the character
             element.type(char)
-            time.sleep(char_delay / 1000)
+            time.sleep(final_delay_ms / 1000)
         
+        log.debug(f"✓ Typed {len(text)} characters at {wpm} WPM")
         return True
+        
     except Exception as e:
         log.error(f"Human typing failed: {e}")
         return False

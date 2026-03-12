@@ -1,12 +1,12 @@
 import time
-from utils.human_behavior import random_delay, random_delay_range
+from utils.human_behavior import random_delay, random_delay_range, human_typing
 from utils.selectors import REPLY_BUTTON, REPLY_TEXTAREA
 from logger_setup import log
 
 
 def reply_tweet(page, tweet, text, timeout=10000):
     """
-    Reply to a tweet with text
+    Reply to a tweet with human-like typing
     
     Args:
         page: Playwright page object
@@ -46,13 +46,9 @@ def reply_tweet(page, tweet, text, timeout=10000):
             text_area = page.locator("div[role='textbox']").first
         
         if text_area:
-            # Type reply text with human-like speed
-            text_area.click()
-            time.sleep(0.3)
-            # Type slowly to seem human
-            for char in text:
-                text_area.type(char)
-                time.sleep(0.01 + random_delay_range(0, 0.05))
+            # FIXED: Use human_typing for realistic speed (was too fast!)
+            # WPM parameter: 60 = average typing speed
+            human_typing(text_area, text, wpm=60)
         else:
             log.error("Could not find textarea for reply")
             return False
