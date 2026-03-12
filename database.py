@@ -31,6 +31,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS replies (
             id INTEGER PRIMARY KEY,
+            text_hash TEXT UNIQUE,
             our_tweet_id TEXT,
             replied_to_id TEXT UNIQUE,
             created_at TIMESTAMP
