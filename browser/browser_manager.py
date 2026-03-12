@@ -13,7 +13,7 @@ class BrowserManager:
         context = self.p.chromium.launch_persistent_context(
             user_data_dir=CHROME_PROFILE,
             channel="chrome",
-            headless=False,
+            headless=True,
             timeout=300000,  # Increase timeout to 5 minutes
             args=[
                 "--start-maximized",
