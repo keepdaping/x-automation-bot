@@ -251,19 +251,101 @@ Rules:
         # If all models fail, return a default response
         log.warning(f"All models failed, using default response")
         return random.choice([
-            "Interesting perspective.",
+            # General agreement
             "That's a good point.",
+            "Interesting perspective.",
             "I hadn't thought about it that way.",
-            "Makes sense."
+            "Makes sense.",
+            "Absolutely.",
+            "Well said.",
+            "This right here.",
+            "100%.",
+            
+            # Reflective
+            "You're onto something.",
+            "Really makes you think.",
+            "Hadn't considered that angle.",
+            "That's actually insightful.",
+            "Deep insight there.",
+            "This deserves more attention.",
+            
+            # Conversational
+            "Exactly what I was thinking.",
+            "Nailed it.",
+            "Co-sign this.",
+            "Take my upvote.",
+            "So true.",
+            "Can't argue with that.",
+            "Facts only.",
+            "This needs to be said more.",
+            
+            # Questions/engagement
+            "How'd you figure this out?",
+            "Why isn't this talked about more?",
+            "Why do so few people realize this?",
+            "This should be required reading.",
+            "Everyone needs to read this.",
+            
+            # Short/impactful
+            "Gold.",
+            "Yes.",
+            "Correct.",
+            "Logic.",
+            "Spot on.",
+            "Quality content.",
+            "Underrated take.",
+            "Saving this.",
+            "This should be pinned.",
         ])
 
     except Exception as e:
         log.error(f"Reply generation failed: {e}")
         return random.choice([
-            "Interesting perspective.",
+            # General agreement
             "That's a good point.",
+            "Interesting perspective.",
             "I hadn't thought about it that way.",
-            "Makes sense."
+            "Makes sense.",
+            "Absolutely.",
+            "Well said.",
+            "This right here.",
+            "100%.",
+            
+            # Reflective
+            "You're onto something.",
+            "Really makes you think.",
+            "Hadn't considered that angle.",
+            "That's actually insightful.",
+            "Deep insight there.",
+            "This deserves more attention.",
+            
+            # Conversational
+            "Exactly what I was thinking.",
+            "Nailed it.",
+            "Co-sign this.",
+            "Take my upvote.",
+            "So true.",
+            "Can't argue with that.",
+            "Facts only.",
+            "This needs to be said more.",
+            
+            # Questions/engagement
+            "How'd you figure this out?",
+            "Why isn't this talked about more?",
+            "Why do so few people realize this?",
+            "This should be required reading.",
+            "Everyone needs to read this.",
+            
+            # Short/impactful
+            "Gold.",
+            "Yes.",
+            "Correct.",
+            "Logic.",
+            "Spot on.",
+            "Quality content.",
+            "Underrated take.",
+            "Saving this.",
+            "This should be pinned.",
         ])
 
 
