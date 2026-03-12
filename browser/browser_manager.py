@@ -12,22 +12,13 @@ class BrowserManager:
 
         self.p = sync_playwright().start()
 
-        # Load existing session if available
-        initial_storage_state = None
-        if os.path.exists(SESSION_FILE):
-            try:
-                with open(SESSION_FILE, 'r') as f:
-                    initial_storage_state = json.load(f)
-                print("✓ Loaded existing session from session.json")
-            except Exception as e:
-                print(f"Warning: Could not load session file: {e}")
-
+        # Launch persistent context WITHOUT storage_state
+        # (storage_state is only for new_context, not launch_persistent_context)
         context = self.p.chromium.launch_persistent_context(
             user_data_dir=CHROME_PROFILE,
             channel="chrome",
             headless=True,
             timeout=300000,  # Increase timeout to 5 minutes
-            storage_state=initial_storage_state,  # Load saved session
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             viewport={"width": 1920, "height": 1080},
             args=[
@@ -51,6 +42,17 @@ class BrowserManager:
             ]
         )
         
+        # Load saved session if available
+        if os.path.exists(SESSION_FILE):
+            try:
+                with open(SESSION_FILE, 'r') as f:
+                    session_data = json.load(f)
+                    cookies = session_data.get("cookies", [])
+                    context.add_cookies(cookies)
+                print(f"✓ Loaded {len(cookies)} cookies from session.json")
+            except Exception as e:
+                print(f"⚠ Warning: Could not load session file: {e}")
+        
         # Inject stealth script to hide automation
         context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
@@ -63,6 +65,6 @@ class BrowserManager:
 
         page = context.pages[0] if context.pages else context.new_page()
 
-        page.goto("https://x.com", wait_until="networkidle")
+        page.goto("https://x.com", wait_until="domcontentloaded", timeout=15000)
 
         return page
