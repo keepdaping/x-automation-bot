@@ -1,5 +1,5 @@
 
-Delete everything and paste **only this clean Python code**:
+
 
 :::writing{variant="standard" id="cfg02"}
 import os
