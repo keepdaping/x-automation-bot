@@ -20,6 +20,15 @@ class BotController:
         self.tracker = PerformanceTracker()
         self.running = True
         
+        # Validate configuration BEFORE starting bot
+        # This must happen at startup, not import time, to allow GitHub Actions
+        # to pass environment variables via secrets
+        try:
+            Config.validate()
+        except ValueError as e:
+            log.error(f"Configuration validation failed: {e}")
+            sys.exit(1)
+        
         # Initialize safety systems
         self.rate_limiter = init_rate_limiter(Config)
         self.session_manager = init_session_manager(Config)

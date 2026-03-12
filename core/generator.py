@@ -5,7 +5,7 @@ Minimal, focused module for LLM calls only.
 Orchestration and validation happens in content/ module.
 """
 
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError, AuthenticationError
 from config import Config
 from logger_setup import log
 
@@ -16,7 +16,29 @@ def _get_client() -> Anthropic:
     """Get or create singleton Anthropic client."""
     global _ai_client
     if _ai_client is None:
-        _ai_client = Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+        # Verify API key is set before creating client
+        if not Config.ANTHROPIC_API_KEY:
+            log.critical("❌ ANTHROPIC_API_KEY not configured!")
+            log.critical(f"   Status: {Config._api_key_source}")
+            raise ValueError("ANTHROPIC_API_KEY is required")
+        
+        if Config.ANTHROPIC_API_KEY == "your_api_key_here":
+            log.critical("❌ ANTHROPIC_API_KEY is set to placeholder value!")
+            log.critical("   Replace in .env: ANTHROPIC_API_KEY=sk-ant-your-actual-key")
+            raise ValueError("ANTHROPIC_API_KEY contains placeholder, not real key")
+        
+        try:
+            _ai_client = Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+            log.debug("✓ Anthropic client initialized successfully")
+        except AuthenticationError as e:
+            log.critical(f"❌ Anthropic API authentication failed: {e}")
+            log.critical(f"   Check that your ANTHROPIC_API_KEY is valid")
+            log.critical(f"   Get it from: https://console.anthropic.com/account/keys")
+            raise
+        except APIError as e:
+            log.critical(f"❌ Anthropic API error: {e}")
+            raise
+    
     return _ai_client
 
 
@@ -56,6 +78,21 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str
             log.debug(f"Generated reply using {model}")
             return reply
         
+        except AuthenticationError as e:
+            # Fatal: API key is invalid
+            log.critical(f"❌ API authentication failed: {str(e)[:100]}")
+            log.critical(f"   Check ANTHROPIC_API_KEY is correct")
+            # Don't retry other models, auth error is fatal
+            raise
+        except APIError as e:
+            # Temporary error or rate limit
+            error_msg = str(e)
+            if "429" in error_msg or "rate" in error_msg.lower():
+                log.warning(f"Rate limited on {model}, stopping retry: {error_msg[:50]}")
+                break  # Don't retry if rate limited
+            else:
+                log.debug(f"Model {model} error: {error_msg[:50]}")
+                continue  # Try next model
         except Exception as e:
             log.debug(f"Model {model} failed: {str(e)[:50]}")
             continue

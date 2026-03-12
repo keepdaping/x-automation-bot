@@ -9,7 +9,9 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# IMPORTANT: override=False ensures GitHub Actions secrets are NOT overridden
+# by placeholder values in .env file
+load_dotenv(override=False)
 
 
 class Config:
@@ -17,6 +19,19 @@ class Config:
     
     # ========== API KEYS ==========
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    
+    # Debug: Check where API key came from
+    # This helps diagnose issues with GitHub Actions secrets not being loaded
+    _api_key_source = "NOT SET"
+    if ANTHROPIC_API_KEY:
+        if ANTHROPIC_API_KEY == "your_api_key_here":
+            _api_key_source = "placeholder (.env file) - INVALID, needs real key!"
+        elif ANTHROPIC_API_KEY.startswith("sk-ant-"):
+            _api_key_source = "valid (environment variable or GitHub Actions secret)"
+        else:
+            _api_key_source = "set but format unknown (may be invalid)"
+    else:
+        _api_key_source = "NOT SET - check GitHub Actions secrets or .env file"
     
     # ========== DEBUG & LOGGING ==========
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
@@ -180,6 +195,20 @@ class Config:
             print("="*70)
             for error in errors:
                 print(f"  ❌ {error}")
+            
+            # Add diagnostic info for API key issues
+            if "ANTHROPIC_API_KEY" in str(errors):
+                print("\n📋 API KEY DIAGNOSTICS:")
+                print(f"  • API Key Status: {cls._api_key_source}")
+                print(f"  • Env Variable Set: {bool(os.getenv('ANTHROPIC_API_KEY'))}")
+                print(f"  • Working Directory: {os.getcwd()}")
+                print(f"\n🔧 To fix:")
+                print(f"  1. Get key from: https://console.anthropic.com/account/keys")
+                print(f"  2. Save to .env:  ANTHROPIC_API_KEY=sk-ant-your-key-here")
+                print(f"  3. OR set env var: export ANTHROPIC_API_KEY=sk-ant-...")
+                print(f"  4. OR in GitHub Actions, add to Secrets tab")
+                print(f"     Then add to workflow: env: ANTHROPIC_API_KEY: ${{{{ secrets.ANTHROPIC_API_KEY }}}}")
+            
             print("\nFix these errors in your .env file")
             print("="*70 + "\n")
             raise ValueError("Configuration validation failed")
@@ -211,10 +240,8 @@ class Config:
         print("="*70 + "\n")
 
 
-# Validate on import
-try:
-    Config.validate()
-except ValueError:
-    import sys
-    sys.exit(1)
+# NOTE: Validation is now deferred to bot startup (run_bot.py)
+# This allows GitHub Actions to pass environment variables without
+# failing immediately at import time
+# DO NOT validate here - it breaks CI/CD pipelines!
 
