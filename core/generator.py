@@ -176,7 +176,7 @@ Improve hook and relatability.
     fb = random.choice(FALLBACK_POSTS)
     return fb, "fallback", 7.0
 
-def generate_reply(tweet_text: str) -> str:
+def generate_contextual_reply(tweet_text: str) -> str:
     """Generate contextual reply to a tweet"""
     try:
         client = _get_draft_client()
@@ -210,3 +210,8 @@ Rules:
             "I hadn't thought about it that way.",
             "Makes sense."
         ])
+
+
+def generate_reply(tweet_text: str) -> str:
+    """Generate a reply to a tweet"""
+    return generate_contextual_reply(tweet_text)

@@ -1,47 +1,12 @@
 import re
 
-def extract_number(text):
-
-    if not text:
-        return 0
-
-    text = text.replace(",", "")
-
-    match = re.search(r"\d+", text)
-
-    return int(match.group()) if match else 0
-
-
-def get_tweet_metrics(tweet):
-
-    metrics = {}
-
-    try:
-        metrics["likes"] = extract_number(
-            tweet.locator('[data-testid="like"]').inner_text()
-        )
-    except:
-        metrics["likes"] = 0
-
-    try:
-        metrics["replies"] = extract_number(
-            tweet.locator('[data-testid="reply"]').inner_text()
-        )
-    except:
-        metrics["replies"] = 0
-
-    return metrics
-
-def score_tweet(metrics):
-import re
-
 
 def _extract_number(text: str) -> int:
+    """Extract the first number from text."""
     if not text:
         return 0
 
     text = text.replace(",", "").strip()
-
     match = re.search(r"\d+", text)
 
     if match:
@@ -51,7 +16,7 @@ def _extract_number(text: str) -> int:
 
 
 def get_tweet_metrics(tweet):
-
+    """Get metrics (likes, replies, retweets) from a tweet element."""
     metrics = {
         "likes": 0,
         "replies": 0,
@@ -80,9 +45,13 @@ def get_tweet_metrics(tweet):
         pass
 
     return metrics
-    score = (
-        metrics["likes"] * 2
-        + metrics["replies"] * 3
-    )
 
+
+def score_tweet(metrics):
+    """Score a tweet based on its engagement metrics."""
+    score = (
+        metrics.get("likes", 0) * 2
+        + metrics.get("replies", 0) * 3
+        + metrics.get("retweets", 0) * 1
+    )
     return score

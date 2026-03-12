@@ -1,12 +1,7 @@
-
-
-
-:::writing{variant="standard" id="cfg02"}
 import os
 
 
 class Config:
-
     # API KEY
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
@@ -30,11 +25,3 @@ class Config:
     # human behavior delays
     MIN_DELAY = 20
     MAX_DELAY = 90
-:::
-
-**Important:**  
-Make sure the file **contains no ``` characters**.
-
----
-
-# Then run the bot again
