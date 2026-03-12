@@ -17,7 +17,7 @@ from actions.like import like_tweet
 from actions.reply import reply_tweet
 from actions.follow import follow_user
 
-from core.generator import generate_contextual_reply
+from content.engine import ContentEngine
 from core.rate_limiter import get_rate_limiter
 from core.error_handler import get_error_handler
 from utils.tweet_metrics import get_tweet_metrics
@@ -46,6 +46,7 @@ def run_engagement(page, config=None):
         # Get global singletons
         rate_limiter = get_rate_limiter()
         error_handler = get_error_handler()
+        content_engine = ContentEngine()  # New content generation engine
         
         # Check if in detection cooldown
         if error_handler.is_in_detection_cooldown():
@@ -135,8 +136,9 @@ def run_engagement(page, config=None):
                             if not should_reply:
                                 log.debug(f"Reply skipped: {reason}")
                             else:
-                                # Generate reply
-                                reply = generate_contextual_reply(tweet_text)
+                                # Generate reply using ContentEngine
+                                result = content_engine.generate_reply(tweet_text)
+                                reply = result.text
                                 
                                 if reply and len(reply) > 0:
                                     success = reply_tweet(page, tweet, reply)
@@ -145,7 +147,7 @@ def run_engagement(page, config=None):
                                         rate_limiter.record_action("reply", success=True, target_id=None)
                                         actions_taken += 1
                                         error_handler.reset_error_counter()
-                                        log.info(f"✓ Replied to tweet")
+                                        log.info(f"✓ Replied to tweet ({result.source}: quality={result.quality_score:.2f})")
                                     else:
                                         rate_limiter.record_action("reply", success=False)
                                         log.debug("✗ Reply failed")
