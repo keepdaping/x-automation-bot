@@ -1,0 +1,8 @@
+{
+  "state": "active",
+  "session_start": "2026-03-12T21:22:35.651129",
+  "session_duration": 2470,
+  "break_start": null,
+  "break_duration": null,
+  "actions_in_session": 0
+}
