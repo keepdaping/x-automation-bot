@@ -131,96 +131,95 @@ class BotController:
                 if self.session_manager.current_state.value != "active":
                     self.session_manager.start_session()
                 
-# Reset daily post flag if the day changed
-            current_time = datetime.utcnow()
-            current_day = current_time.date()
-            if self.last_daily_post_date != current_day:
-                self.daily_posted_today = False
-                self.last_daily_post_date = current_day
+                # Reset daily post flag if the day changed
+                current_time = datetime.utcnow()
+                current_day = current_time.date()
+                if self.last_daily_post_date != current_day:
+                    self.daily_posted_today = False
+                    self.last_daily_post_date = current_day
 
-            # Generate daily posting time if new day
-            if self.last_generated_day != current_day:
-                start_hour = Config.DAILY_TWEET_START_HOUR_UTC
-                end_hour = Config.DAILY_TWEET_END_HOUR_UTC
-                random_hour = random.uniform(start_hour, end_hour)
-                hour = int(random_hour)
-                minute = int((random_hour % 1) * 60)
-                second = int(((random_hour % 1) * 60 % 1) * 60)
-                self.daily_posting_time = datetime(current_day.year, current_day.month, current_day.day, hour, minute, second)
-                self.last_generated_day = current_day
-                log.info(f"Generated daily posting time for {current_day}: {self.daily_posting_time}")
+                # Generate daily posting time if new day
+                if self.last_generated_day != current_day:
+                    start_hour = Config.DAILY_TWEET_START_HOUR_UTC
+                    end_hour = Config.DAILY_TWEET_END_HOUR_UTC
+                    random_hour = random.uniform(start_hour, end_hour)
+                    hour = int(random_hour)
+                    minute = int((random_hour % 1) * 60)
+                    second = int(((random_hour % 1) * 60 % 1) * 60)
+                    self.daily_posting_time = datetime(current_day.year, current_day.month, current_day.day, hour, minute, second)
+                    self.last_generated_day = current_day
+                    log.info(f"Generated daily posting time for {current_day}: {self.daily_posting_time}")
 
-            # Try to post a daily tweet at the scheduled time
-            if Config.DAILY_TWEET_ENABLED:
-                if (
-                    not self.daily_posted_today
-                    and count_posts_today() == 0
-                    and current_time >= self.daily_posting_time
-                    and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
-                ):
-                    log.info(f"Posting daily tweet at scheduled time: {current_time}")
-                    self._post_daily_tweet()
-# elif not self.daily_posted_today and current_time < self.daily_posting_time:
-                    #     log.info(f"Waiting for daily posting time: {self.daily_posting_time}")
+                # Try to post a daily tweet at the scheduled time
+                if Config.DAILY_TWEET_ENABLED:
+                    if (
+                        not self.daily_posted_today
+                        and count_posts_today() == 0
+                        and current_time >= self.daily_posting_time
+                        and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
+                    ):
+                        log.info(f"Posting daily tweet at scheduled time: {current_time}")
+                        self._post_daily_tweet()
+    # elif not self.daily_posted_today and current_time < self.daily_posting_time:
+                        #     log.info(f"Waiting for daily posting time: {self.daily_posting_time}")
 
-                # Check if should take action based on natural pacing
-                if not self.session_manager.should_take_action():
-                    # Too soon since last action - take a natural pause
-                    self.session_manager.print_status()
-                    self.tracker.record_cycle(success=True, action_count=0)
-                    time.sleep(random.uniform(5, 15))  # Natural pause
-                    continue
-                
-                # Run engagement cycle
-                cycle_start_time = time.time()
-                log.info(f"\n{'#'*70}")
-                log.info(f"# ENGAGEMENT CYCLE {cycle_count}")
-                
-                # Show session progress
-                info = self.session_manager.get_session_info()
-                if info.get("actions") is not None:
-                    progress = f"(Session {info['percentage']}%: {info['actions']}/{info['target_actions']} actions)"
-                    log.info(f"# {progress}")
-                log.info(f"{'#'*70}\n")
-                
-                try:
-                    # Run engagement actions with rate limiting
-                    run_engagement(self.page, Config)
+                    # Check if should take action based on natural pacing
+                    if not self.session_manager.should_take_action():
+                        # Too soon since last action - take a natural pause
+                        self.session_manager.print_status()
+                        self.tracker.record_cycle(success=True, action_count=0)
+                        time.sleep(random.uniform(5, 15))  # Natural pause
+                        continue
                     
-                    # Record action in session
-                    self.session_manager.record_action()
-                    self.tracker.record_cycle(success=True, action_count=1)
-                
-                except Exception as e:
-                    log.error(f"Cycle error: {e}")
-                    self.tracker.record_cycle(success=False)
+                    # Run engagement cycle
+                    cycle_start_time = time.time()
+                    log.info(f"\n{'#'*70}")
+                    log.info(f"# ENGAGEMENT CYCLE {cycle_count}")
                     
-                    # Try to recover
+                    # Show session progress
+                    info = self.session_manager.get_session_info()
+                    if info.get("actions") is not None:
+                        progress = f"(Session {info['percentage']}%: {info['actions']}/{info['target_actions']} actions)"
+                        log.info(f"# {progress}")
+                    log.info(f"{'#'*70}\n")
+                    
                     try:
-                        log.warning("Attempting to recover...")
-                        self.page = self.browser.restart()
-                    except:
-                        log.error("Failed to restart browser, exiting")
-                        return False
-                
-                # Check if session is complete
-                if self.session_manager.is_session_complete():
-                    # End session and take break
-                    self.session_manager.end_session()
-                    continue
-                
-                # Between-action pause for natural pacing
-                cycle_elapsed = time.time() - cycle_start_time
-                min_action_wait = random.uniform(
-                    self.session_manager.min_action_interval_sec,
-                    self.session_manager.max_action_interval_sec
-                )
-                
-                wait_time = max(0, min_action_wait - cycle_elapsed)
-                if wait_time > 0:
-                    log.info(f"✓ Pausing for {wait_time:.0f}s before next action (natural pacing)...")
-                    time.sleep(wait_time)
-            
+                        # Run engagement actions with rate limiting
+                        run_engagement(self.page, Config)
+                        
+                        # Record action in session
+                        self.session_manager.record_action()
+                        self.tracker.record_cycle(success=True, action_count=1)
+                    
+                    except Exception as e:
+                        log.error(f"Cycle error: {e}")
+                        self.tracker.record_cycle(success=False)
+                        
+                        # Try to recover
+                        try:
+                            log.warning("Attempting to recover...")
+                            self.page = self.browser.restart()
+                        except:
+                            log.error("Failed to restart browser, exiting")
+                            return False
+                    
+                    # Check if session is complete
+                    if self.session_manager.is_session_complete():
+                        # End session and take break
+                        self.session_manager.end_session()
+                        continue
+                    
+                    # Between-action pause for natural pacing
+                    cycle_elapsed = time.time() - cycle_start_time
+                    min_action_wait = random.uniform(
+                        self.session_manager.min_action_interval_sec,
+                        self.session_manager.max_action_interval_sec
+                    )
+                    
+                    wait_time = max(0, min_action_wait - cycle_elapsed)
+                    if wait_time > 0:
+                        log.info(f"✓ Pausing for {wait_time:.0f}s before next action (natural pacing)...")
+                        time.sleep(wait_time)
             return True
         
         except KeyboardInterrupt:
