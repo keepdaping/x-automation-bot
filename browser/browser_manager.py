@@ -43,11 +43,13 @@ class BrowserManager:
                 context_opts = {**BROWSER_CONTEXT_OPTIONS, **CONTEXT_EXTRA_OPTIONS}
 
                 # Launch persistent context
+                # Playwright may take longer to start in constrained CI environments.
+                # Increase timeout to avoid premature failures like "Timeout 30000ms exceeded".
                 self.context = self.p.chromium.launch_persistent_context(
                     user_data_dir=CHROME_PROFILE,
                     channel="chrome",
                     headless=True,
-                    timeout=30000,  # 30 second timeout
+                    timeout=120000,  # 120 second timeout
                     args=LAUNCH_ARGS,
                     **context_opts,
                 )
