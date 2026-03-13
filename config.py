@@ -49,6 +49,11 @@ class Config:
     # Engagement threshold
     MIN_ENGAGEMENT_SCORE = float(os.getenv("MIN_ENGAGEMENT_SCORE", "5"))
 
+    # Daily posting window (UTC)
+    DAILY_TWEET_ENABLED = os.getenv("DAILY_TWEET_ENABLED", "true").lower() == "true"
+    DAILY_TWEET_START_HOUR_UTC = int(os.getenv("DAILY_TWEET_START_HOUR_UTC", "10"))
+    DAILY_TWEET_END_HOUR_UTC = int(os.getenv("DAILY_TWEET_END_HOUR_UTC", "13"))
+
     # Cache settings
     CACHE_EXPIRY_DAYS = int(os.getenv("CACHE_EXPIRY_DAYS", "30"))
     

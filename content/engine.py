@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from logger_setup import logger
 from config import Config
 
-from content.prompts import get_reply_system_prompt, get_fallback_replies
+from content.prompts import (
+    get_reply_system_prompt,
+    get_daily_tweet_system_prompt,
+    get_fallback_replies,
+)
 from content.content_cache import ReplyCache
 from content.content_moderator import ContentModerator
 from core.generator import generate_contextual_reply, get_last_generation_metrics
@@ -180,6 +184,18 @@ class ContentEngine:
                 quality_score=0.2,
                 error=str(e),
             )
+
+    def generate_daily_tweet(self, topic: str = None) -> str:
+        """Generate a single daily tweet.
+
+        Uses the same content generation pipeline but with a prompt optimized for original tweets.
+        """
+        # Seed the generator with a topic to influence the tweet (optional)
+        seed = topic or "a short, engaging idea"
+        system_prompt = get_daily_tweet_system_prompt()
+
+        tweet = generate_contextual_reply(tweet_text=seed, system_prompt=system_prompt)
+        return tweet.strip() if tweet else ""
 
     def _get_fallback(self) -> str:
         """Get a random fallback reply."""

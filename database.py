@@ -88,7 +88,8 @@ def save_post(text: str, tweet_id: str, topic: str, fmt: str, score: float):
 
 def count_posts_today() -> int:
 
-    today_start = datetime.combine(date.today(), datetime.min.time())
+    # Use UTC date to match posting window logic
+    today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
     today_start_str = today_start.isoformat()
 
     conn = sqlite3.connect(DB_PATH)

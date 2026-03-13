@@ -2,6 +2,7 @@ import time
 import random
 import signal
 import sys
+from datetime import datetime, date
 
 from browser.browser_manager import BrowserManager
 from core.engagement import run_engagement
@@ -9,9 +10,11 @@ from core.rate_limiter import init_rate_limiter
 from core.error_handler import init_error_handler
 from core.session_manager import init_session_manager
 from config import Config
-from database import init_db
+from database import init_db, count_posts_today, is_duplicate, save_post
 from logger_setup import log
 from utils.performance_tracker import PerformanceTracker
+from actions.tweet import post_tweet
+from content.engine import get_content_engine
 
 
 class BotController:
@@ -20,6 +23,8 @@ class BotController:
         self.page = None
         self.tracker = PerformanceTracker()
         self.running = True
+        self.daily_posted_today = False
+        self.last_daily_post_date = None
         
         # Initialize databases
         init_db()  # Initialize main bot database (posts, replies, etc.)
@@ -48,6 +53,32 @@ class BotController:
             self.browser.close()
         log.info("Bot stopped cleanly")
         sys.exit(0)
+
+    def _post_daily_tweet(self):
+        """Post one original tweet per day during the configured window."""
+        try:
+            # Generate tweet content
+            content_engine = get_content_engine()
+            topic = random.choice(Config.SEARCH_KEYWORDS) if Config.SEARCH_KEYWORDS else None
+            tweet_text = content_engine.generate_daily_tweet(topic)
+
+            if not tweet_text or not tweet_text.strip():
+                log.warning("Daily tweet generation returned empty; skipping")
+                return
+
+            if is_duplicate(tweet_text):
+                log.warning("Daily tweet is duplicate of previous post; skipping")
+                return
+
+            log.info("Posting daily tweet...")
+            post_tweet(self.page, tweet_text)
+
+            save_post(tweet_text, None, topic or "daily", "daily", 0.0)
+            self.daily_posted_today = True
+            log.info(f"✅ Daily tweet posted: {tweet_text}")
+
+        except Exception as e:
+            log.error(f"Failed to post daily tweet: {e}")
     
     def start(self):
         """Start the automation bot"""
@@ -98,7 +129,23 @@ class BotController:
                 if self.session_manager.current_state.value != "active":
                     self.session_manager.start_session()
                 
-                # Check if should take action based on natural pacing
+# Reset daily post flag if the day changed
+            today = date.today()
+            if self.last_daily_post_date != today:
+                self.daily_posted_today = False
+                self.last_daily_post_date = today
+
+            # Try to post a daily tweet if within posting window
+            if Config.DAILY_TWEET_ENABLED:
+                now_utc = datetime.utcnow()
+                if (
+                    Config.DAILY_TWEET_START_HOUR_UTC <= now_utc.hour < Config.DAILY_TWEET_END_HOUR_UTC
+                    and not self.daily_posted_today
+                    and count_posts_today() == 0
+                ):
+                    self._post_daily_tweet()
+
+            # Check if should take action based on natural pacing
                 if not self.session_manager.should_take_action():
                     # Too soon since last action - take a natural pause
                     self.session_manager.print_status()
