@@ -334,21 +334,26 @@ class SessionManager:
         }
     
     def get_time_until_active(self) -> int:
-        """
-        Get seconds until next active window
-        
+        """Get seconds until next active window.
+
         Returns:
-            Seconds to wait until active, 0 if currently active
+            Seconds to wait until active, or 0 if currently active.
         """
-        
+
         now = datetime.now()
+
+        # If we're currently in a break, return the remaining break time
+        if self.current_state == SessionState.BREAK and self.break_start_time and self.break_duration_sec:
+            elapsed = (now - self.break_start_time).total_seconds()
+            remaining = self.break_duration_sec - elapsed
+            return int(max(0, remaining))
+
         now_hour = now.hour
-        now_minute = now.minute
-        
+
         # If currently in active hours
         if now_hour >= self.active_start_hour and now_hour < self.active_end_hour:
             return 0
-        
+
         # Calculate time until next active window
         if now_hour >= self.active_end_hour:
             # After active hours - wait until tomorrow's start
@@ -359,7 +364,7 @@ class SessionManager:
             # Before active hours - wait until today's start
             today_start = now.replace(hour=self.active_start_hour, minute=0, second=0)
             wait_sec = (today_start - now).total_seconds()
-        
+
         return int(max(0, wait_sec))
     
     def _save_state(self) -> None:
@@ -416,46 +421,60 @@ class SessionManager:
             if state_data.get("session_action_target"):
                 self.session_action_target = state_data["session_action_target"]
             
-            # Recalculate session_action_target if missing (for restored sessions)
+            # If the restored session is already complete or too old, reset to idle
+            if self.current_state == SessionState.ACTIVE_SESSION and self.session_start_time:
+                now = datetime.now()
+                session_end = self.session_start_time + timedelta(seconds=self.session_duration_sec or 0)
+
+                # If the session end time has passed, or the session is older than 12h, reset
+                if now > session_end or now - self.session_start_time > timedelta(hours=12):
+                    log.info("⚠️ Restored session is stale/complete, resetting to idle")
+                    self.current_state = SessionState.IDLE
+                    self.session_start_time = None
+                    self.session_duration_sec = None
+                    self.session_action_target = None
+                    self.actions_in_session = 0
+
+            # If we restored an active session without a target, recalc it
             if (self.current_state == SessionState.ACTIVE_SESSION and 
                 self.session_duration_sec and 
                 self.session_action_target is None):
                 session_minutes = self.session_duration_sec / 60
                 self.session_action_target = max(2, int(session_minutes / 5))
                 log.info(f"✓ Recalculated session target actions: {self.session_action_target}")
-            
+
             log.info(f"✓ Restored session state from disk: {self.current_state.value}")
-        
+
         except Exception as e:
             log.error(f"Failed to load session state: {e}")
-    
+
     def print_status(self) -> None:
-        """Print human-readable status"""
-        
+        """Print human-readable status."""
+
         info = self.get_session_info()
         state = SessionState(info.get("state"))
-        
+
         if state == SessionState.ACTIVE_SESSION:
             elapsed = info.get("elapsed_sec", 0)
             remaining = info.get("remaining_sec", 0)
             actions = info.get("actions", 0)
             target = info.get("target_actions", 0)
             pct = info.get("percentage", 0)
-            
+
             log.info(f"📱 SESSION: {elapsed/60:.0f}m elapsed, {remaining/60:.0f}m remaining ({pct}%)")
             log.info(f"   Actions: {actions}/{target}")
-        
+
         elif state == SessionState.BREAK:
             elapsed = info.get("elapsed_sec", 0)
             remaining = info.get("remaining_sec", 0)
             pct = info.get("percentage", 0)
-            
+
             log.info(f"⏸️  BREAK: {elapsed/60:.0f}m elapsed, {remaining/60:.0f}m remaining ({pct}%)")
-        
+
         elif state == SessionState.OUTSIDE_HOURS:
             wait_sec = self.get_time_until_active()
             log.info(f"😴 OUTSIDE ACTIVE HOURS - sleeping for {wait_sec/3600:.1f} hours")
-        
+
         else:
             log.info(f"🔄 IDLE - waiting to start session")
 
