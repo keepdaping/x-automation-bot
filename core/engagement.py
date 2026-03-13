@@ -17,7 +17,7 @@ from actions.like import like_tweet
 from actions.reply import reply_tweet
 from actions.follow import follow_user
 
-from content.engine import ContentEngine, get_content_engine
+from content.engine import get_content_engine
 from core.rate_limiter import get_rate_limiter
 from core.error_handler import get_error_handler
 from utils.tweet_metrics import get_tweet_metrics
@@ -46,7 +46,7 @@ def run_engagement(page, config=None):
         # Get global singletons
         rate_limiter = get_rate_limiter()
         error_handler = get_error_handler()
-        content_engine = get_content_engine()  # reuse singleton content engine
+        content_engine = get_content_engine()  # Reuse singleton content engine
         
         # Check if in detection cooldown
         if error_handler.is_in_detection_cooldown():

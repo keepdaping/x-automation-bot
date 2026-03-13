@@ -5,13 +5,24 @@ Minimal, focused module for LLM calls only.
 Orchestration and validation happens in content/ module.
 """
 
+import time
+
 from anthropic import Anthropic, APIError, AuthenticationError
 from config import Config
 from logger_setup import log
-from dataclasses import dataclass
-from typing import Optional
 
 _ai_client: Anthropic | None = None
+_last_generation_metrics = {
+    "model": None,
+    "tokens": None,
+    "duration": None,
+    "success": False,
+}
+
+
+def get_last_generation_metrics() -> dict:
+    """Return metrics for the last LLM generation."""
+    return _last_generation_metrics.copy()
 
 
 def _get_client() -> Anthropic:
@@ -44,33 +55,23 @@ def _get_client() -> Anthropic:
     return _ai_client
 
 
+def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str:
+    """Generate a contextual reply to a tweet using Claude.
 
-@dataclass
-class GeneratorResponse:
-    """Container for metadata returned by the LLM call."""
-    text: str
-    model: Optional[str]
-    tokens: Optional[int]
-
-
-def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> GeneratorResponse:
-    """
-    Generate a contextual reply to a tweet using Claude.
-    
     Args:
         tweet_text: The original tweet content
         system_prompt: Optional custom system prompt
-    
+
     Returns:
-        GeneratorResponse containing text and metadata.  `text` will be
-        empty if all models fail.
+        Generated reply text (empty string if all models fail)
     """
-    
+
     if system_prompt is None:
         system_prompt = _get_default_reply_system_prompt()
-    
+
     client = _get_client()
-    
+    start_time = time.time()
+
     # Try each model in sequence
     for model in Config.AI_MODELS_TO_TRY:
         try:
@@ -85,26 +86,43 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> Gen
                     }
                 ]
             )
-            
-            reply = response.content[0].text.strip()
-            # attempt to pull token usage if available
+
+            duration = time.time() - start_time
             tokens = None
-            if hasattr(response, "usage"):
-                # some SDK versions expose usage.total_tokens
-                try:
-                    tokens = response.usage.total_tokens
-                except Exception:
-                    tokens = None
-            log.debug(f"Generated reply using {model}, tokens={tokens}")
-            return GeneratorResponse(text=reply, model=model, tokens=tokens)
-        
+            usage = getattr(response, "usage", None)
+            if isinstance(usage, dict):
+                tokens = usage.get("total_tokens") or usage.get("completion_tokens")
+            elif hasattr(response, "completion_tokens"):
+                tokens = getattr(response, "completion_tokens")
+
+            _last_generation_metrics.update(
+                {
+                    "model": model,
+                    "tokens": tokens,
+                    "duration": duration,
+                    "success": True,
+                }
+            )
+
+            reply = response.content[0].text.strip()
+            log.debug(f"Generated reply using {model}")
+            return reply
+
         except AuthenticationError as e:
             # Fatal: API key is invalid
+            duration = time.time() - start_time
+            _last_generation_metrics.update(
+                {"model": model, "duration": duration, "success": False}
+            )
             log.critical(f"❌ API authentication failed: {str(e)[:100]}")
             log.critical(f"   Check ANTHROPIC_API_KEY is correct")
             # Don't retry other models, auth error is fatal
             raise
         except APIError as e:
+            duration = time.time() - start_time
+            _last_generation_metrics.update(
+                {"model": model, "duration": duration, "success": False}
+            )
             # Temporary error or rate limit
             error_msg = str(e)
             if "429" in error_msg or "rate" in error_msg.lower():
@@ -114,12 +132,18 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> Gen
                 log.debug(f"Model {model} error: {error_msg[:50]}")
                 continue  # Try next model
         except Exception as e:
+            duration = time.time() - start_time
+            _last_generation_metrics.update(
+                {"model": model, "duration": duration, "success": False}
+            )
             log.debug(f"Model {model} failed: {str(e)[:50]}")
             continue
-    
+
     # All models failed
+    duration = time.time() - start_time
+    _last_generation_metrics.update({"duration": duration, "success": False})
     log.warning("All models failed to generate reply")
-    return GeneratorResponse(text="", model=None, tokens=None)
+    return ""
 
 
 def _get_default_reply_system_prompt() -> str:

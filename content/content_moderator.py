@@ -149,6 +149,25 @@ class ContentModerator:
         # Clamp score to 0-1 range
         return min(1.0, max(0.0, score))
 
+    @classmethod
+    def is_generic(cls, text: str) -> bool:
+        """Check whether a reply is too generic or templated."""
+        text_lower = text.lower()
+        generic_phrases = [
+            "i agree",
+            "good point",
+            "great point",
+            "so true",
+            "100%",
+            "agreed",
+            "yes",
+            "yep",
+            "ok",
+            "interesting",
+            "nice",
+        ]
+        return any(phrase in text_lower for phrase in generic_phrases)
+
     @staticmethod
     def is_duplicate(text: str, db_path: str = "data/bot.db") -> bool:
         """

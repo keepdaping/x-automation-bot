@@ -49,7 +49,7 @@ class Config:
     # Engagement threshold
     MIN_ENGAGEMENT_SCORE = float(os.getenv("MIN_ENGAGEMENT_SCORE", "5"))
 
-    # Content cache expiration (days)
+    # Cache settings
     CACHE_EXPIRY_DAYS = int(os.getenv("CACHE_EXPIRY_DAYS", "30"))
     
     # ========== RATE LIMITS - DAILY ==========

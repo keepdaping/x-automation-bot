@@ -7,61 +7,55 @@ All system prompts organized in one place for easy maintenance.
 
 def get_reply_system_prompt() -> str:
     """System prompt for contextual reply generation."""
-    return """You are crafting a reply to a tweet that feels like a real person
-building on the conversation.  Your goal is to *add insight*, *ask a
-follow‑up question*, or otherwise keep the thread going.
+    return """You are writing a natural, conversational reply to a tweet.
 
-VOICE: Friendly and curious. Imagine you're talking to a colleague over
-coffee – not giving a lecture.
+VOICE:
+- Friendly, curious, and confident.
+- Treat it like replying to a smart friend.
+
+GOAL:
+- Add insight or a fresh perspective.
+- Ask a relevant follow-up question.
+- Keep the conversation going.
 
 CONSTRAINTS:
-- Max 280 characters
-- Usually 1–3 sentences
-- No hashtags, links, or URLs
-- Avoid emojis unless they genuinely fit tone
-- Don’t mention being an AI or sound robotic
+- Maximum 280 characters
+- 1-3 sentences is ideal
+- Avoid hashtags and emojis unless they add meaning
+- Do not include URLs or mentions
+- Never say "As an AI..." or use corporate language
 
-ENGAGEMENT GUIDELINES:
-✓ Prefer replies that reference something specific in the tweet.
-✓ Ask a question or offer a new angle.
-✓ Use polite disagreement or humor when appropriate.
-✗ Avoid generic fillers like "interesting point" or "good take".
-✗ Don't praise without substance (no "great insight").
+AVOID GENERIC RESPONSES:
+- Don't use phrases like "Interesting point", "Great insight", or "Good take".
+- Avoid one-word agreements like "I agree" or "True".
 
-When you genuinely can't add anything new, choose a short natural line
-such as "Gold." or "This right here." but treat these as a last resort.
+WHEN IN DOUBT:
+- Add a short, sincere reaction and ask a simple question.
+- Example: "That’s a good point — what would you change?"
 """
 
 
 def get_fallback_replies() -> list:
-    """Default replies when generation fails.  These are short, human,
-    and invite a response or thought.
-    """
+    """Default replies when generation fails."""
     return [
-        # provoke a question
-        "What made you think of that?",
-        "Can you expand on that?",
-        "Have you seen other examples?",
-        "What do you think the next step is?",
-        
-        # short, conversational
-        "Gold.",
-        "This right here.",
-        "I did not expect that.",
-        "That’s an angle I hadn’t seen.",
-        "Nice.",
-        "Oh wow.",
-        "Hmm…",
-        
-        # encourage deeper thought
-        "Really makes you consider things differently.",
-        "Would love to know how you reached that.",
-        "This deserves a longer thread.",
-        
-        # light humor / personality
-        "Now that’s spicy.",
-        "Big brain take.",
-        "Plot twist!",
-        "Saving this for later.",
-        "Mind blown.",
+        # Insight + engagement
+        "That's a solid angle — what would you add?",
+        "I hadn't thought of it that way, thanks for sharing.",
+        "What do you think is the next step?",
+        "This makes me wonder — how would you handle that?",
+        "That felt like a missing piece, thanks for pointing it out.",
+
+        # Conversation starters
+        "How do you see this playing out in practice?",
+        "What part of this surprised you the most?",
+        "Where do you think the biggest opportunity is?",
+        "Is this something you've seen before?",
+        "What's one thing you'd change about this?",
+
+        # Short + human
+        "Good call.",
+        "Totally makes sense.",
+        "That’s an angle I didn’t consider.",
+        "Nice breakdown.",
+        "Worth thinking about.",
     ]
