@@ -25,6 +25,8 @@ class BotController:
         self.running = True
         self.daily_posted_today = False
         self.last_daily_post_date = None
+        self.daily_posting_time = None
+        self.last_generated_day = None
         
         # Initialize databases
         init_db()  # Initialize main bot database (posts, replies, etc.)
@@ -130,22 +132,38 @@ class BotController:
                     self.session_manager.start_session()
                 
 # Reset daily post flag if the day changed
-            today = date.today()
-            if self.last_daily_post_date != today:
+            current_time = datetime.utcnow()
+            current_day = current_time.date()
+            if self.last_daily_post_date != current_day:
                 self.daily_posted_today = False
-                self.last_daily_post_date = today
+                self.last_daily_post_date = current_day
 
-            # Try to post a daily tweet if within posting window
+            # Generate daily posting time if new day
+            if self.last_generated_day != current_day:
+                start_hour = Config.DAILY_TWEET_START_HOUR_UTC
+                end_hour = Config.DAILY_TWEET_END_HOUR_UTC
+                random_hour = random.uniform(start_hour, end_hour)
+                hour = int(random_hour)
+                minute = int((random_hour % 1) * 60)
+                second = int(((random_hour % 1) * 60 % 1) * 60)
+                self.daily_posting_time = datetime(current_day.year, current_day.month, current_day.day, hour, minute, second)
+                self.last_generated_day = current_day
+                log.info(f"Generated daily posting time for {current_day}: {self.daily_posting_time}")
+
+            # Try to post a daily tweet at the scheduled time
             if Config.DAILY_TWEET_ENABLED:
-                now_utc = datetime.utcnow()
                 if (
-                    Config.DAILY_TWEET_START_HOUR_UTC <= now_utc.hour < Config.DAILY_TWEET_END_HOUR_UTC
-                    and not self.daily_posted_today
+                    not self.daily_posted_today
                     and count_posts_today() == 0
+                    and current_time >= self.daily_posting_time
+                    and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
                 ):
+                    log.info(f"Posting daily tweet at scheduled time: {current_time}")
                     self._post_daily_tweet()
+# elif not self.daily_posted_today and current_time < self.daily_posting_time:
+                    #     log.info(f"Waiting for daily posting time: {self.daily_posting_time}")
 
-            # Check if should take action based on natural pacing
+                # Check if should take action based on natural pacing
                 if not self.session_manager.should_take_action():
                     # Too soon since last action - take a natural pause
                     self.session_manager.print_status()
