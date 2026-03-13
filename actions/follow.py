@@ -18,27 +18,32 @@ def follow_user(tweet, timeout=5000):
     try:
         # Find follow button in tweet's user section
         follow_btn = tweet.locator(FOLLOW_BUTTON).first
-        
+
+        # Fallback: sometimes the follow button isn't tagged with data-testid
+        # (e.g., new layouts). Look for a button with visible "Follow" text.
+        if not follow_btn or not follow_btn.is_visible(timeout=1000):
+            follow_btn = tweet.locator("div[role='button']:has-text('Follow')").first
+
         if not follow_btn:
             log.warning("Follow button not found")
             return False
-        
+
         # Check visibility
         if not follow_btn.is_visible(timeout=1000):
             log.warning("Follow button not visible")
             return False
-        
+
         # Scroll into view
         follow_btn.scroll_into_view_if_needed()
         time.sleep(0.3)
-        
+
         # Click follow
         try:
             follow_btn.click(timeout=timeout)
-        except:
+        except Exception:
             log.warning("Gentle click failed, force clicking...")
             follow_btn.click(timeout=timeout, force=True)
-        
+
         log.debug("✓ User followed")
         random_delay()
         return True
