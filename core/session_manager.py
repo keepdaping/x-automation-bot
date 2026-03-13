@@ -370,6 +370,7 @@ class SessionManager:
                 "state": self.current_state.value,
                 "session_start": self.session_start_time.isoformat() if self.session_start_time else None,
                 "session_duration": self.session_duration_sec,
+                "session_action_target": self.session_action_target,
                 "break_start": self.break_start_time.isoformat() if self.break_start_time else None,
                 "break_duration": self.break_duration_sec,
                 "actions_in_session": self.actions_in_session,
@@ -411,6 +412,17 @@ class SessionManager:
             
             if state_data.get("actions_in_session"):
                 self.actions_in_session = state_data["actions_in_session"]
+            
+            if state_data.get("session_action_target"):
+                self.session_action_target = state_data["session_action_target"]
+            
+            # Recalculate session_action_target if missing (for restored sessions)
+            if (self.current_state == SessionState.ACTIVE_SESSION and 
+                self.session_duration_sec and 
+                self.session_action_target is None):
+                session_minutes = self.session_duration_sec / 60
+                self.session_action_target = max(2, int(session_minutes / 5))
+                log.info(f"✓ Recalculated session target actions: {self.session_action_target}")
             
             log.info(f"✓ Restored session state from disk: {self.current_state.value}")
         
