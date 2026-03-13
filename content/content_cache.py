@@ -12,14 +12,22 @@ from typing import Optional
 import difflib
 
 from logger_setup import logger
+from config import Config
 
 
 class ReplyCache:
-    """Intelligent reply cache with semantic similarity matching."""
+    """Intelligent reply cache with semantic similarity matching.
+
+    This class holds a persistent SQLite connection to avoid repeatedly
+    opening the database.  Entries older than a configurable expiry are
+    automatically deleted when `get()` is called.
+    """
 
     def __init__(self, db_path: str = "data/bot.db"):
-        """Initialize cache with database connection."""
+        """Initialize cache with database connection and ensure table exists."""
         self.db_path = db_path
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.cursor = self.conn.cursor()
         self._init_cache_table()
 
     def _init_cache_table(self) -> None:
@@ -70,61 +78,62 @@ class ReplyCache:
         
         return intersection / union if union > 0 else 0.0
 
-    def get(self, tweet_text: str, similarity_threshold: float = 0.7) -> Optional[str]:
+    def get(self, tweet_text: str, similarity_threshold: float = 0.7) -> Optional[tuple]:
         """
         Get cached reply for tweet, using exact and semantic matching.
         
-        Args:
-            tweet_text: The tweet to find a reply for
-            similarity_threshold: Min similarity (0-1) for semantic matches
-            
-        Returns:
-            Cached reply if found, None otherwise
+        Returns tuple (reply, quality_score) or None.
+        Entries older than Config.CACHE_EXPIRY_DAYS are cleaned up first.
         """
         try:
+            # automatic expiry before lookup
+            expiry = getattr(Config, "CACHE_EXPIRY_DAYS", 30)
+            if expiry:
+                cutoff = datetime.now() - timedelta(days=expiry)
+                self.cursor.execute(
+                    "DELETE FROM reply_cache WHERE created_at < ?",
+                    (cutoff,)
+                )
+                self.conn.commit()
+
             tweet_hash = self._hash_tweet(tweet_text)
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
             
             # Exact match (fastest)
-            cursor.execute(
-                "SELECT generated_reply FROM reply_cache WHERE tweet_hash = ?",
+            self.cursor.execute(
+                "SELECT generated_reply, quality_score FROM reply_cache WHERE tweet_hash = ?",
                 (tweet_hash,)
             )
-            result = cursor.fetchone()
+            result = self.cursor.fetchone()
             
             if result:
+                reply, score = result
                 # Update usage stats
-                cursor.execute(
+                self.cursor.execute(
                     """UPDATE reply_cache 
                        SET last_used = ?, usage_count = usage_count + 1
                        WHERE tweet_hash = ?""",
                     (datetime.now(), tweet_hash)
                 )
-                conn.commit()
-                conn.close()
+                self.conn.commit()
                 logger.debug(f"Cache hit (exact): {tweet_hash[:8]}")
-                return result[0]
+                return reply, score
             
-            # Semantic match (if recent cache exists)
-            cursor.execute(
-                """SELECT tweet_hash, original_text, generated_reply 
+            # Semantic match among recent entries
+            cutoff_date = datetime.now() - timedelta(days=7)
+            self.cursor.execute(
+                """SELECT tweet_hash, original_text, generated_reply, quality_score
                    FROM reply_cache 
                    WHERE created_at > ?
                    ORDER BY quality_score DESC
                    LIMIT 50""",
-                (datetime.now() - timedelta(days=7),)  # Only recent 7 days
+                (cutoff_date,)
             )
-            
-            for (cached_hash, cached_text, cached_reply) in cursor.fetchall():
+            for cached_hash, cached_text, cached_reply, cached_score in self.cursor.fetchall():
                 similarity = self._semantic_similarity(tweet_text, cached_text)
-                
                 if similarity >= similarity_threshold:
                     logger.debug(f"Cache hit (semantic): {similarity:.2f}")
-                    conn.close()
-                    return cached_reply
+                    return cached_reply, cached_score
             
-            conn.close()
             logger.debug(f"Cache miss: {tweet_hash[:8]}")
             return None
             
@@ -139,30 +148,17 @@ class ReplyCache:
         quality_score: float = 0.5
     ) -> bool:
         """
-        Store generated reply in cache.
-        
-        Args:
-            tweet_text: Original tweet
-            reply: Generated reply
-            quality_score: Quality score (0-1) for ranking
-            
-        Returns:
-            True if successful, False otherwise
+        Store generated reply in cache (or replace existing entry).
         """
         try:
             tweet_hash = self._hash_tweet(tweet_text)
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute(
+            self.cursor.execute(
                 """INSERT OR REPLACE INTO reply_cache 
                    (tweet_hash, original_text, generated_reply, quality_score, created_at, last_used, usage_count)
                    VALUES (?, ?, ?, ?, ?, ?, 1)""",
                 (tweet_hash, tweet_text, reply, quality_score, datetime.now(), datetime.now())
             )
-            
-            conn.commit()
-            conn.close()
+            self.conn.commit()
             logger.debug(f"Cached reply: {tweet_hash[:8]}")
             return True
             
@@ -172,59 +168,59 @@ class ReplyCache:
 
     def cleanup_old_entries(self, days: int = 30) -> int:
         """
-        Remove old cache entries.
-        
-        Args:
-            days: Remove entries older than this many days
-            
-        Returns:
-            Number of entries deleted
+        Remove old cache entries older than the given number of days.
+        Operates on the persistent connection.
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
             cutoff_date = datetime.now() - timedelta(days=days)
-            cursor.execute(
+            self.cursor.execute(
                 "DELETE FROM reply_cache WHERE created_at < ?",
                 (cutoff_date,)
             )
-            
-            deleted = cursor.rowcount
-            conn.commit()
-            conn.close()
-            
+            deleted = self.cursor.rowcount
+            self.conn.commit()
             logger.info(f"Cleaned up {deleted} old cache entries")
             return deleted
-            
         except Exception as e:
             logger.error(f"Cache cleanup failed: {e}")
             return 0
 
-    def get_stats(self) -> dict:
-        """Get cache statistics."""
+    def is_reply_similar(self, reply_text: str, threshold: float = 0.8) -> bool:
+        """Determine if a reply similar to `reply_text` exists in cache.
+
+        This method checks the most recent high-quality replies to avoid
+        costly scans over the entire database.
+        """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT COUNT(*) FROM reply_cache")
-            total = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT SUM(usage_count) FROM reply_cache")
-            total_uses = cursor.fetchone()[0] or 0
-            
-            cursor.execute("SELECT AVG(quality_score) FROM reply_cache")
-            avg_quality = cursor.fetchone()[0] or 0
-            
-            conn.close()
-            
+            cutoff_date = datetime.now() - timedelta(days=30)
+            self.cursor.execute(
+                "SELECT generated_reply FROM reply_cache "
+                "WHERE created_at > ? ORDER BY quality_score DESC LIMIT 100",
+                (cutoff_date,)
+            )
+            for (cached_reply,) in self.cursor.fetchall():
+                if self._semantic_similarity(reply_text, cached_reply) >= threshold:
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"Similarity check failed: {e}")
+            return False
+
+    def get_stats(self) -> dict:
+        """Get cache statistics using the persistent cursor."""
+        try:
+            self.cursor.execute("SELECT COUNT(*) FROM reply_cache")
+            total = self.cursor.fetchone()[0]
+            self.cursor.execute("SELECT SUM(usage_count) FROM reply_cache")
+            total_uses = self.cursor.fetchone()[0] or 0
+            self.cursor.execute("SELECT AVG(quality_score) FROM reply_cache")
+            avg_quality = self.cursor.fetchone()[0] or 0
             return {
                 "total_cached_replies": total,
                 "total_uses": total_uses,
                 "avg_quality_score": round(avg_quality, 2),
                 "avg_uses_per_reply": round(total_uses / total, 2) if total > 0 else 0,
             }
-            
         except Exception as e:
             logger.error(f"Failed to get cache stats: {e}")
             return {}

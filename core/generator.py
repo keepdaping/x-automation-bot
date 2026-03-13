@@ -8,6 +8,8 @@ Orchestration and validation happens in content/ module.
 from anthropic import Anthropic, APIError, AuthenticationError
 from config import Config
 from logger_setup import log
+from dataclasses import dataclass
+from typing import Optional
 
 _ai_client: Anthropic | None = None
 
@@ -42,7 +44,16 @@ def _get_client() -> Anthropic:
     return _ai_client
 
 
-def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str:
+
+@dataclass
+class GeneratorResponse:
+    """Container for metadata returned by the LLM call."""
+    text: str
+    model: Optional[str]
+    tokens: Optional[int]
+
+
+def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> GeneratorResponse:
     """
     Generate a contextual reply to a tweet using Claude.
     
@@ -51,7 +62,8 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str
         system_prompt: Optional custom system prompt
     
     Returns:
-        Generated reply text (empty string if all models fail)
+        GeneratorResponse containing text and metadata.  `text` will be
+        empty if all models fail.
     """
     
     if system_prompt is None:
@@ -75,8 +87,16 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str
             )
             
             reply = response.content[0].text.strip()
-            log.debug(f"Generated reply using {model}")
-            return reply
+            # attempt to pull token usage if available
+            tokens = None
+            if hasattr(response, "usage"):
+                # some SDK versions expose usage.total_tokens
+                try:
+                    tokens = response.usage.total_tokens
+                except Exception:
+                    tokens = None
+            log.debug(f"Generated reply using {model}, tokens={tokens}")
+            return GeneratorResponse(text=reply, model=model, tokens=tokens)
         
         except AuthenticationError as e:
             # Fatal: API key is invalid
@@ -99,7 +119,7 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str
     
     # All models failed
     log.warning("All models failed to generate reply")
-    return ""
+    return GeneratorResponse(text="", model=None, tokens=None)
 
 
 def _get_default_reply_system_prompt() -> str:

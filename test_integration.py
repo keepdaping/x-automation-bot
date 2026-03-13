@@ -55,7 +55,7 @@ def test_engagement_instantiation():
         
         checks = [
             ("ContentEngine import", "from content.engine import ContentEngine" in content),
-            ("ContentEngine instantiation", "content_engine = ContentEngine()" in content),
+            ("ContentEngine singleton use", "get_content_engine()" in content),
             ("generate_reply call", "content_engine.generate_reply" in content),
             ("Result handling", "result.text" in content),
             ("Source logging", "result.source" in content),

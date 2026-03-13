@@ -7,6 +7,7 @@ Uses: caching → prompt creation → LLM generation → validation → storage
 
 from typing import Optional
 from dataclasses import dataclass
+import time
 
 from logger_setup import logger
 from config import Config
@@ -14,7 +15,7 @@ from config import Config
 from content.prompts import get_reply_system_prompt, get_fallback_replies
 from content.content_cache import ReplyCache
 from content.content_moderator import ContentModerator
-from core.generator import generate_contextual_reply
+from core.generator import generate_contextual_reply, GeneratorResponse
 
 
 @dataclass
@@ -31,20 +32,30 @@ class ContentEngine:
     Production-grade content generation engine.
     
     Pipeline:
-    1. Check cache (exact + semantic matching)
-    2. Validate input tweet
-    3. Generate new reply via LLM
-    4. Validate generated reply
-    5. Score quality
-    6. Cache result
-    7. Return with metadata
+    1. Expire old cache entries automatically
+    2. Check cache (exact + semantic matching) and return stored score
+    3. Validate input tweet
+    4. Generate new reply via LLM (metrics tracked)
+    5. Validate generated reply
+    6. Score quality
+    7. Avoid duplicates/generic replies
+    8. Cache result with score
+    9. Return with metadata
     """
 
     def __init__(self):
         """Initialize content engine with cache and validator."""
+        # single persistent cache connection will be managed by ReplyCache
         self.cache = ReplyCache()
         self.moderator = ContentModerator()
         self.fallback_replies = get_fallback_replies()
+        # footprint metric counters
+        self.metrics = {
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "generated": 0,
+            "fallbacks": 0,
+        }
         logger.info("ContentEngine initialized")
 
     def generate_reply(
@@ -65,15 +76,27 @@ class ContentEngine:
             GenerationResult with reply text and metadata
         """
         try:
+            # automatic cache expiry if configured
+            expiry = getattr(Config, "CACHE_EXPIRY_DAYS", 30)
+            if expiry:
+                self.cache.cleanup_old_entries(expiry)
+
             # Step 1: Try cache first (unless forced)
             if use_cache and not force_generation:
-                cached_reply = self.cache.get(tweet_text)
-                if cached_reply:
+                cached = self.cache.get(tweet_text)
+                if cached:
+                    # returned tuple (reply, quality_score)
+                    reply_text, quality_score = cached
+                    self.metrics["cache_hits"] += 1
+                    logger.debug(f"Cache hit (quality={quality_score:.2f})")
                     return GenerationResult(
-                        text=cached_reply,
+                        text=reply_text,
                         source="cache",
-                        quality_score=0.8,  # Cached replies presumed higher quality
+                        quality_score=quality_score,
                     )
+                else:
+                    self.metrics["cache_misses"] += 1
+                    logger.debug("Cache miss")
 
             # Step 2: Validate input
             is_valid, error = self.moderator.validate(tweet_text)
@@ -88,15 +111,20 @@ class ContentEngine:
 
             # Step 3: Generate new reply via LLM
             system_prompt = get_reply_system_prompt()
-            generated_text = generate_contextual_reply(
+            gen_start = time.perf_counter()
+            resp: GeneratorResponse = generate_contextual_reply(
                 tweet_text=tweet_text,
                 system_prompt=system_prompt,
             )
+            gen_time = time.perf_counter() - gen_start
+            generated_text = resp.text
+            logger.info(f"LLM generate: model={resp.model} time={gen_time:.2f}s tokens={resp.tokens}")
 
             # Step 4: Validate generated reply
             is_valid, error = self.moderator.validate(generated_text)
             if not is_valid:
                 logger.warning(f"Generated reply failed validation: {error}")
+                self.metrics["fallbacks"] += 1
                 return GenerationResult(
                     text=self._get_fallback(),
                     source="fallback",
@@ -107,18 +135,23 @@ class ContentEngine:
             # Step 5: Score quality
             quality_score = self.moderator.score_quality(generated_text)
 
-            # Step 6: Check for duplicates
-            if self.moderator.is_duplicate(generated_text):
-                logger.debug("Generated reply is duplicate of previous reply, using fallback")
+            # Step 6: Check for duplicates or generic replies
+            generic = {r.lower() for r in self.fallback_replies}
+            if self.moderator.is_duplicate(generated_text) or \
+               self.cache.is_reply_similar(generated_text) or \
+               generated_text.lower() in generic:
+                logger.debug("Generated reply considered duplicate/generic, using fallback")
+                self.metrics["fallbacks"] += 1
                 return GenerationResult(
                     text=self._get_fallback(),
                     source="fallback",
                     quality_score=0.3,
-                    error="Reply is duplicate of previous replies",
+                    error="Reply is duplicate or too generic",
                 )
 
             # Step 7: Cache the result
             self.cache.set(tweet_text, generated_text, quality_score)
+            self.metrics["generated"] += 1
 
             return GenerationResult(
                 text=generated_text,
@@ -128,6 +161,7 @@ class ContentEngine:
 
         except Exception as e:
             logger.error(f"Content generation failed: {e}", exc_info=True)
+            self.metrics["fallbacks"] += 1
             return GenerationResult(
                 text=self._get_fallback(),
                 source="fallback",
