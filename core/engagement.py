@@ -12,10 +12,13 @@ import random
 import time
 from typing import Optional
 
+from utils.human_behavior import natural_scroll
+
 from search.search_tweets import search_tweets
 from actions.like import like_tweet
 from actions.reply import reply_tweet
 from actions.follow import follow_user
+from utils.selectors import TWEET_ARTICLE, TWEET_TIMESTAMP
 
 from content.engine import get_content_engine
 from core.rate_limiter import get_rate_limiter
@@ -27,7 +30,48 @@ from utils.language_handler import should_reply_to_tweet_safe
 from logger_setup import log
 
 
-def run_engagement(page, config=None):
+def _browse_timeline(page, rate_limiter):
+    """Optional home timeline browsing to mimic human behavior."""
+    try:
+        # Navigate to home timeline
+        page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=20000)
+        time.sleep(random.uniform(2, 4))
+
+        # Scroll through the timeline a few times
+        for _ in range(random.randint(2, 5)):
+            natural_scroll(page, pixels=random.randint(800, 1600))
+            time.sleep(random.uniform(1.5, 3.0))
+
+        # Optionally open a tweet to view details
+        if random.random() < 0.35:
+            tweets = page.locator(TWEET_ARTICLE).all()
+            if tweets:
+                tweet = random.choice(tweets)
+                try:
+                    time_link = tweet.locator(TWEET_TIMESTAMP).first
+                    if time_link:
+                        time_link.click()
+                        time.sleep(random.uniform(2, 4))
+
+                        # Optionally like the opened tweet
+                        if random.random() < 0.4 and rate_limiter.can_perform_action("like")[0]:
+                            if like_tweet(tweet):
+                                rate_limiter.record_action("like", success=True, target_id=None)
+
+                except Exception:
+                    pass
+
+        # Return to home timeline
+        try:
+            page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+
+    except Exception as e:
+        log.debug(f"Timeline browse error: {e}")
+
+
+def run_engagement(page, config=None, keyword=None):
     """
     Run one cycle of engagement with all safety checks and rate limiting.
     
@@ -67,10 +111,15 @@ def run_engagement(page, config=None):
             log.info("❌ Daily action limits reached - skipping cycle")
             return False
         
+        # Occasionally perform timeline browsing to simulate human usage patterns
+        if random.random() < 0.25:
+            _browse_timeline(page, rate_limiter)
+
         # Search for tweets
-        log.info("Searching for relevant tweets...")
+        search_keyword = keyword or (random.choice(config.SEARCH_KEYWORDS if config else ["AI"]))
+        log.info(f"Searching for relevant tweets (keyword: {search_keyword})...")
         try:
-            tweets = search_tweets(page, random.choice(config.SEARCH_KEYWORDS if config else ["AI"]))
+            tweets = search_tweets(page, search_keyword)
         except Exception as e:
             error_handler.handle_error(e, "search_tweets")
             return False

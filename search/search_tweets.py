@@ -1,3 +1,4 @@
+import random
 import re
 import time
 import urllib.parse
@@ -124,9 +125,22 @@ def search_tweets(page, keyword, max_results=5, timeout=15000):
             log.warning(f"No tweets found for '{keyword}'")
             return []
 
-        # Sort by score and return top results
+        # Sort by score (high engagement first)
         candidates.sort(key=lambda x: x["score"], reverse=True)
-        selected = [c["tweet"] for c in candidates[:max_results]]
+
+        # Weighted randomness: prefer high-scoring tweets but still allow variety
+        selected = []
+        available = candidates.copy()
+        weights = [c["score"] for c in available]
+
+        while available and len(selected) < max_results:
+            choice = random.choices(available, weights=weights, k=1)[0]
+            selected.append(choice["tweet"])
+
+            # Remove chosen candidate to avoid duplicates
+            idx = available.index(choice)
+            available.pop(idx)
+            weights.pop(idx)
 
         log.info(f"Returning {len(selected)} tweet candidates for '{keyword}'")
         return selected

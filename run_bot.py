@@ -2,7 +2,7 @@ import time
 import random
 import signal
 import sys
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from browser.browser_manager import BrowserManager
 from core.engagement import run_engagement
@@ -10,7 +10,7 @@ from core.rate_limiter import init_rate_limiter
 from core.error_handler import init_error_handler
 from core.session_manager import init_session_manager
 from config import Config
-from database import init_db, count_posts_today, is_duplicate, save_post
+from database import init_db, count_posts_today, get_last_daily_post_date, has_posted_today, is_duplicate, save_post
 from logger_setup import log
 from utils.performance_tracker import PerformanceTracker
 from actions.tweet import post_tweet
@@ -27,7 +27,11 @@ class BotController:
         self.last_daily_post_date = None
         self.daily_posting_time = None
         self.last_generated_day = None
-        
+
+        # Per-session randomized search topics (to avoid predictable ordering)
+        self._session_search_topics = []
+        self._session_search_index = 0
+
         # Initialize databases
         init_db()  # Initialize main bot database (posts, replies, etc.)
         
@@ -56,13 +60,40 @@ class BotController:
         log.info("Bot stopped cleanly")
         sys.exit(0)
 
+    def _refresh_search_topics(self):
+        """Shuffle search keywords each session to avoid predictable search patterns."""
+        self._session_search_topics = list(Config.SEARCH_KEYWORDS)
+        random.shuffle(self._session_search_topics)
+        self._session_search_index = 0
+        log.debug(f"Shuffled search topics for session: {self._session_search_topics}")
+
+    def _get_next_search_topic(self) -> str:
+        """Get the next search topic for this session (rotating, shuffled).
+
+        Falls back to a random keyword if none are configured.
+        """
+        if not self._session_search_topics:
+            self._refresh_search_topics()
+
+        if not self._session_search_topics:
+            return "AI"
+
+        topic = self._session_search_topics[self._session_search_index % len(self._session_search_topics)]
+        self._session_search_index += 1
+        return topic
+
     def _post_daily_tweet(self):
         """Post one original tweet per day during the configured window."""
         try:
             # Generate tweet content
             content_engine = get_content_engine()
-            topic = random.choice(Config.SEARCH_KEYWORDS) if Config.SEARCH_KEYWORDS else None
+            topic = self._get_next_search_topic()
             tweet_text = content_engine.generate_daily_tweet(topic)
+
+            if has_posted_today():
+                log.info("Daily tweet already posted today (persistent guard) - skipping")
+                self.daily_posted_today = True
+                return
 
             if not tweet_text or not tweet_text.strip():
                 log.warning("Daily tweet generation returned empty; skipping")
@@ -105,6 +136,13 @@ class BotController:
             log.info("✓ Rate limiter initialized")
             log.info("✓ Error handler initialized")
             log.info("✓ Session manager initialized")
+
+            # Persistent daily tweet guard
+            self.last_daily_post_date = get_last_daily_post_date()
+            self.daily_posted_today = has_posted_today()
+            if self.daily_posted_today:
+                log.info(f"✓ Daily tweet already posted today ({self.last_daily_post_date})")
+
             log.info("\nStarting engagement loop with human-like sessions (Press Ctrl+C to stop)\n")
             
             # Main loop - session-driven engagement
@@ -130,9 +168,10 @@ class BotController:
                 # Start session if not already in one
                 if self.session_manager.current_state.value != "active":
                     self.session_manager.start_session()
+                    self._refresh_search_topics()
                 
-                # Reset daily post flag if the day changed
-                current_time = datetime.utcnow()
+                # Reset daily post flag if the day changed (UTC)
+                current_time = datetime.now(timezone.utc)
                 current_day = current_time.date()
                 if self.last_daily_post_date != current_day:
                     self.daily_posted_today = False
@@ -154,7 +193,7 @@ class BotController:
                 if Config.DAILY_TWEET_ENABLED:
                     if (
                         not self.daily_posted_today
-                        and count_posts_today() == 0
+                        and not has_posted_today()
                         and current_time >= self.daily_posting_time
                         and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
                     ):
@@ -185,7 +224,7 @@ class BotController:
                     
                     try:
                         # Run engagement actions with rate limiting
-                        run_engagement(self.page, Config)
+                        run_engagement(self.page, Config, keyword=self._get_next_search_topic())
                         
                         # Record action in session
                         self.session_manager.record_action()

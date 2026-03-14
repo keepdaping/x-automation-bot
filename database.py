@@ -1,6 +1,6 @@
 import sqlite3
 import hashlib
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from pathlib import Path
 from logger_setup import log
 from config import Config
@@ -89,8 +89,8 @@ def save_post(text: str, tweet_id: str, topic: str, fmt: str, score: float):
 def count_posts_today() -> int:
 
     # Use UTC date to match posting window logic
-    today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
-    today_start_str = today_start.isoformat()
+    today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time())
+    today_start_str = today_start.strftime("%Y-%m-%d %H:%M:%S")
 
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -106,6 +106,40 @@ def count_posts_today() -> int:
     conn.close()
 
     return count
+
+
+# --------------------------------------------------
+# Daily post guard (persistent)
+# --------------------------------------------------
+
+def get_last_daily_post_date() -> date | None:
+    """Return the UTC date of the most recent daily post (if any)."""
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute(
+        """SELECT created_at FROM posts WHERE format = 'daily' ORDER BY created_at DESC LIMIT 1"""
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row or not row[0]:
+        return None
+
+    try:
+        # SQLite stores timestamps as 'YYYY-MM-DD HH:MM:SS' (UTC)
+        return datetime.fromisoformat(row[0]).date()
+    except Exception:
+        return None
+
+
+def has_posted_today() -> bool:
+    """Return True if a daily tweet has already been posted in UTC today."""
+    last_date = get_last_daily_post_date()
+    if not last_date:
+        return False
+    return last_date == datetime.now(timezone.utc).date()
 
 
 # --------------------------------------------------

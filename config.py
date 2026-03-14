@@ -61,7 +61,7 @@ class Config:
     MAX_LIKES_PER_DAY = int(os.getenv("MAX_LIKES_PER_DAY", "20"))
     MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "5"))
     MAX_FOLLOWS_PER_DAY = int(os.getenv("MAX_FOLLOWS_PER_DAY", "10"))
-    MAX_POSTS_PER_DAY = int(os.getenv("MAX_POSTS_PER_DAY", "2"))
+    MAX_POSTS_PER_DAY = int(os.getenv("MAX_POSTS_PER_DAY", "1"))
     
     # ========== RATE LIMITS - HOURLY ==========
     MAX_LIKES_PER_HOUR = int(os.getenv("MAX_LIKES_PER_HOUR", "3"))
