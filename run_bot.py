@@ -185,7 +185,7 @@ class BotController:
                     hour = int(random_hour)
                     minute = int((random_hour % 1) * 60)
                     second = int(((random_hour % 1) * 60 % 1) * 60)
-                    self.daily_posting_time = datetime(current_day.year, current_day.month, current_day.day, hour, minute, second)
+                    self.daily_posting_time = datetime(current_day.year, current_day.month, current_day.day, hour, minute, second, tzinfo=timezone.utc)
                     self.last_generated_day = current_day
                     log.info(f"Generated daily posting time for {current_day}: {self.daily_posting_time}")
 
