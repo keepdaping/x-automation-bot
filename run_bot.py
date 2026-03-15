@@ -191,20 +191,23 @@ class BotController:
 
                 # Try to post a daily tweet at the scheduled time
                 if Config.DAILY_TWEET_ENABLED:
-                    # Ensure daily_posting_time is always timezone-aware (UTC)
+                    # Universal guard: skip if posting_time is None, always make UTC-aware
                     posting_time = self.daily_posting_time
-                    if posting_time is not None and posting_time.tzinfo is None:
-                        from datetime import timezone as _tz
-                        posting_time = posting_time.replace(tzinfo=_tz.utc)
+                    if posting_time is None:
+                        log.debug("Daily posting time is None, skipping daily tweet check this cycle.")
+                    else:
+                        if posting_time.tzinfo is None:
+                            from datetime import timezone as _tz
+                            posting_time = posting_time.replace(tzinfo=_tz.utc)
 
-                    if (
-                        not self.daily_posted_today
-                        and not has_posted_today()
-                        and current_time >= posting_time
-                        and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
-                    ):
-                        log.info(f"Posting daily tweet at scheduled time: {current_time}")
-                        self._post_daily_tweet()
+                        if (
+                            not self.daily_posted_today
+                            and not has_posted_today()
+                            and current_time >= posting_time
+                            and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
+                        ):
+                            log.info(f"Posting daily tweet at scheduled time: {current_time}")
+                            self._post_daily_tweet()
     # elif not self.daily_posted_today and current_time < self.daily_posting_time:
                         #     log.info(f"Waiting for daily posting time: {self.daily_posting_time}")
 
