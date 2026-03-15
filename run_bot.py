@@ -191,10 +191,16 @@ class BotController:
 
                 # Try to post a daily tweet at the scheduled time
                 if Config.DAILY_TWEET_ENABLED:
+                    # Ensure daily_posting_time is always timezone-aware (UTC)
+                    posting_time = self.daily_posting_time
+                    if posting_time is not None and posting_time.tzinfo is None:
+                        from datetime import timezone as _tz
+                        posting_time = posting_time.replace(tzinfo=_tz.utc)
+
                     if (
                         not self.daily_posted_today
                         and not has_posted_today()
-                        and current_time >= self.daily_posting_time
+                        and current_time >= posting_time
                         and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
                     ):
                         log.info(f"Posting daily tweet at scheduled time: {current_time}")
