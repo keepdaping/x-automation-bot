@@ -2,10 +2,7 @@ name: X Bot Automation
 
 on:
   schedule:
-    # Run every 6 hours during active window
     - cron: '0 */6 * * *'
-
-  # Allow manual trigger
   workflow_dispatch:
 
 jobs:
@@ -51,14 +48,32 @@ jobs:
             echo "✓ Session cookies restored from secret"
           else
             echo "⚠ No SESSION_JSON_B64 secret found"
-            echo "  To set up: base64 -w0 session.json | copy to GitHub Secrets"
           fi
+
+      - name: Clear stale session state
+        run: |
+          rm -f data/session_state.txt
+          echo "✓ Cleared stale session state"
 
       - name: Run bot
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           HEADLESS_MODE: "true"
           ENVIRONMENT: production
+          SEARCH_KEYWORDS: "AI tools,python automation,making money online,freelance developer,building in public,side project,self taught developer,learn to code"
+          CONTENT_PILLARS: "ai:AI tools and automation tips for working smarter not harder,hustle:Making money as a developer through freelancing and side projects,journey:Real talk about growing as a self-taught developer from Uganda"
+          VIRAL_HOOKS: "hot_take,question,thread_hook,contrarian,story,tip"
+          ACTIVE_START_HOUR: "5"
+          ACTIVE_END_HOUR: "20"
+          DAILY_TWEET_START_HOUR_UTC: "7"
+          DAILY_TWEET_END_HOUR_UTC: "10"
+          DAILY_TWEET_ENABLED: "true"
+          MAX_LIKES_PER_DAY: "20"
+          MAX_REPLIES_PER_DAY: "5"
+          MAX_FOLLOWS_PER_DAY: "10"
+          MAX_UNFOLLOWS_PER_DAY: "5"
+          MAX_POSTS_PER_DAY: "1"
+          BANNED_WORDS: "viagra,cialis,pharmacy,mlm,pyramid,dropship"
         run: |
           timeout 3000 python run_bot.py || true
 
