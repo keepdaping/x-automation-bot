@@ -72,6 +72,20 @@ class RateLimiter:
             );
         """)
         self.db.commit()
+        # Auto-migrate: add missing columns to old databases
+        self._migrate_db()
+
+    def _migrate_db(self):
+        """Add missing columns to existing databases (backward compatibility)."""
+        try:
+            cur = self.db.execute("PRAGMA table_info(daily_summary)")
+            existing_cols = {row[1] for row in cur.fetchall()}
+            needed = {"likes", "replies", "follows", "unfollows", "posts", "quotes", "errors"}
+            for col in needed - existing_cols:
+                self.db.execute(f"ALTER TABLE daily_summary ADD COLUMN {col} INTEGER DEFAULT 0")
+            self.db.commit()
+        except Exception as e:
+            pass  # Table might not exist yet, _init_db will create it
 
     def can_perform_action(self, action_type: str) -> tuple:
         with self.db_lock:
