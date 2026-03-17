@@ -1,6 +1,5 @@
 import sys
 from loguru import logger
-from config import Config
 
 logger.remove()
 logger.add(sys.stdout, colorize=True, level="INFO",

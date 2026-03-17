@@ -1,4 +1,4 @@
-# Environment variables - NEVER commit these!
+# Environment - NEVER commit
 .env
 .env.local
 .env.*.local
@@ -8,45 +8,32 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
 venv/
 ENV/
-env/
+
+# Sensitive data
+session.json
+user_data/
+*.db
+
+# Logs
+*.log
+data/error_history.log
+data/detection_events.log
+data/fatal_errors.log
+data/detection_cooldown.txt
+data/session_state.txt
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# Sessions and data
-session.json
-user_data/
-*.db
-*.log
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Project specific
-.github/workflows/logs/
-metrics/
+# Build
+build/
+dist/
+*.egg-info/

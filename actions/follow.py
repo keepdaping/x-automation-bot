@@ -1,72 +1,57 @@
+"""Follow users with tracking for unfollow strategy."""
+
+import re
 import time
 from utils.human_behavior import random_delay
 from utils.selectors import FOLLOW_BUTTON
+from database import save_follow
 from logger_setup import log
 
 
-def follow_user(tweet, timeout=5000):
-    """
-    Follow a user by clicking follow button in tweet
-    
-    Args:
-        tweet: Tweet element (article)
-        timeout: Action timeout
-    
-    Returns:
-        bool: True if successful, False otherwise
-    """
+def _extract_user_info(tweet) -> dict:
+    """Extract user ID and username from tweet element."""
+    info = {"user_id": None, "username": ""}
     try:
-        # Find follow button in tweet's user section
+        # Extract username from profile link
+        links = tweet.locator("a[href*='/']").all()
+        for link in links:
+            href = link.get_attribute("href")
+            if href and re.match(r"^/[A-Za-z0-9_]+$", href):
+                info["username"] = href.strip("/")
+                info["user_id"] = info["username"]  # Use username as ID
+                break
+    except Exception:
+        pass
+    return info
+
+
+def follow_user(tweet, timeout=5000):
+    try:
         follow_btn = tweet.locator(FOLLOW_BUTTON).first
 
-        # Fallback: sometimes the follow button isn't tagged with data-testid
-        # (e.g., new layouts). Look for a button with visible "Follow" text.
         if not follow_btn or not follow_btn.is_visible(timeout=1000):
             follow_btn = tweet.locator("div[role='button']:has-text('Follow')").first
 
-        if not follow_btn:
-            log.warning("Follow button not found")
+        if not follow_btn or not follow_btn.is_visible(timeout=1000):
             return False
 
-        # Check visibility
-        if not follow_btn.is_visible(timeout=1000):
-            log.warning("Follow button not visible")
-            return False
-
-        # Scroll into view
         follow_btn.scroll_into_view_if_needed()
         time.sleep(0.3)
 
-        # Click follow
         try:
             follow_btn.click(timeout=timeout)
         except Exception:
-            log.warning("Gentle click failed, force clicking...")
             follow_btn.click(timeout=timeout, force=True)
 
-        log.debug("✓ User followed")
+        # Track the follow for unfollow strategy
+        user_info = _extract_user_info(tweet)
+        if user_info["user_id"]:
+            save_follow(user_info["user_id"], user_info["username"])
+            log.debug(f"Tracked follow: @{user_info['username']}")
+
         random_delay()
         return True
-    
-    except Exception as e:
-        log.warning(f"Failed to follow user: {e}")
-        return False
 
-
-def unfollow_user(tweet):
-    """
-    Unfollow a user
-    """
-    try:
-        follow_btn = tweet.locator(FOLLOW_BUTTON).first
-        
-        if follow_btn and follow_btn.is_visible(timeout=1000):
-            follow_btn.scroll_into_view_if_needed()
-            time.sleep(0.2)
-            follow_btn.click()
-            log.debug("✓ User unfollowed")
-            random_delay()
-            return True
     except Exception as e:
-        log.warning(f"Failed to unfollow user: {e}")
+        log.warning(f"Failed to follow: {e}")
         return False

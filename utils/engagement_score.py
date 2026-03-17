@@ -1,12 +1,17 @@
-def score_tweet(metrics):
+"""
+Tweet scoring with age boosting.
+FIXED: Single canonical score_tweet function (was duplicated before).
+"""
 
+
+def score_tweet(metrics):
     score = (
         metrics.get("likes", 0) * 2
         + metrics.get("replies", 0) * 3
         + metrics.get("retweets", 0) * 2
     )
 
-    # Boost recent tweets (favor tweets posted in the last few hours)
+    # Boost recent tweets
     age_seconds = metrics.get("age_seconds")
     if age_seconds is not None:
         age_hours = age_seconds / 3600
