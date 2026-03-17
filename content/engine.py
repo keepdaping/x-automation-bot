@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from logger_setup import logger
 from config import Config
-from content.prompts import get_reply_system_prompt, get_daily_tweet_system_prompt, get_fallback_replies
+from content.prompts import get_reply_system_prompt, get_daily_tweet_system_prompt, get_fallback_replies, get_quote_tweet_system_prompt
 from content.content_cache import ReplyCache
 from content.content_moderator import ContentModerator
 from core.generator import generate_contextual_reply, get_last_generation_metrics
@@ -102,6 +102,13 @@ class ContentEngine:
         user_message = f"Write one original tweet about: {seed}"
         tweet = generate_contextual_reply(tweet_text=seed, system_prompt=system_prompt, user_message=user_message)
         return tweet.strip() if tweet else ""
+
+    def generate_quote_text(self, tweet_text: str) -> str:
+        """Generate commentary for a quote tweet."""
+        system_prompt = get_quote_tweet_system_prompt()
+        user_message = f"Write a short quote tweet commentary for this tweet:\n\n\"{tweet_text}\""
+        text = generate_contextual_reply(tweet_text=tweet_text, system_prompt=system_prompt, user_message=user_message)
+        return text.strip() if text else ""
 
     def _get_fallback(self) -> str:
         import random

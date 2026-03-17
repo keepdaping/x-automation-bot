@@ -27,6 +27,7 @@ class RateLimiter:
             "follow": getattr(config, "MAX_FOLLOWS_PER_DAY", 10),
             "unfollow": getattr(config, "MAX_UNFOLLOWS_PER_DAY", 5),
             "post": getattr(config, "MAX_POSTS_PER_DAY", 2),
+            "quote": getattr(config, "MAX_QUOTES_PER_DAY", 2),
         }
 
         self.hourly_limits = {
@@ -35,6 +36,7 @@ class RateLimiter:
             "follow": max(1, math.ceil(self.daily_limits["follow"] / 12)),
             "unfollow": max(1, math.ceil(self.daily_limits["unfollow"] / 12)),
             "post": max(1, math.ceil(self.daily_limits["post"] / 6)),
+            "quote": max(1, math.ceil(self.daily_limits["quote"] / 6)),
         }
 
         self.min_action_spacing = {
@@ -43,6 +45,7 @@ class RateLimiter:
             "follow": 60,
             "unfollow": 60,
             "post": 300,
+            "quote": 180,
         }
 
     def _init_db(self):
@@ -64,6 +67,7 @@ class RateLimiter:
                 follows INTEGER DEFAULT 0,
                 unfollows INTEGER DEFAULT 0,
                 posts INTEGER DEFAULT 0,
+                quotes INTEGER DEFAULT 0,
                 errors INTEGER DEFAULT 0
             );
         """)
@@ -144,7 +148,7 @@ class RateLimiter:
 
     def _update_daily_summary(self, action_type: str):
         today = date.today()
-        column_map = {"like": "likes", "reply": "replies", "follow": "follows", "unfollow": "unfollows", "post": "posts", "error": "errors"}
+        column_map = {"like": "likes", "reply": "replies", "follow": "follows", "unfollow": "unfollows", "post": "posts", "quote": "quotes", "error": "errors"}
         col = column_map.get(action_type)
         if not col:
             return
@@ -161,11 +165,11 @@ class RateLimiter:
 
     def get_daily_summary(self) -> dict:
         today = date.today()
-        cur = self.db.execute("SELECT likes, replies, follows, unfollows, posts, errors FROM daily_summary WHERE date = ?", (today,))
+        cur = self.db.execute("SELECT likes, replies, follows, unfollows, posts, quotes, errors FROM daily_summary WHERE date = ?", (today,))
         row = cur.fetchone()
         if not row:
-            return {"likes": 0, "replies": 0, "follows": 0, "unfollows": 0, "posts": 0, "errors": 0}
-        return {"likes": row[0], "replies": row[1], "follows": row[2], "unfollows": row[3], "posts": row[4], "errors": row[5]}
+            return {"likes": 0, "replies": 0, "follows": 0, "unfollows": 0, "posts": 0, "quotes": 0, "errors": 0}
+        return {"likes": row[0], "replies": row[1], "follows": row[2], "unfollows": row[3], "posts": row[4], "quotes": row[5], "errors": row[6]}
 
     def get_remaining_actions(self) -> dict:
         summary = self.get_daily_summary()

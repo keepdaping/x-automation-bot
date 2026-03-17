@@ -13,6 +13,7 @@ from search.search_tweets import search_tweets
 from actions.like import like_tweet
 from actions.reply import reply_tweet
 from actions.follow import follow_user
+from actions.quote_tweet import quote_tweet
 from actions.unfollow import run_unfollow_cycle
 from utils.selectors import TWEET_ARTICLE, TWEET_TIMESTAMP
 
@@ -183,6 +184,31 @@ def run_engagement(page, config=None, keyword=None):
                         except Exception as e:
                             should_retry, wait_seconds = error_handler.handle_error(e, "follow_user")
                             rate_limiter.record_action("follow", success=False)
+                            errors_in_cycle += 1
+                            if should_retry and wait_seconds > 0:
+                                time.sleep(wait_seconds)
+
+                # QUOTE TWEET (10% chance — high-value but use sparingly)
+                if random.random() < 0.10:
+                    if rate_limiter.can_perform_action("quote")[0]:
+                        try:
+                            tweet_text = get_tweet_text(tweet)
+                            should_reply, reason = should_reply_to_tweet_safe(tweet_text)
+
+                            if should_reply and len(tweet_text) > 20:
+                                commentary = content_engine.generate_quote_text(tweet_text)
+                                if commentary and len(commentary) > 5:
+                                    success = quote_tweet(page, tweet, commentary)
+                                    if success:
+                                        rate_limiter.record_action("quote", success=True, target_id=None)
+                                        actions_taken += 1
+                                        error_handler.reset_error_counter()
+                                        log.info(f"✓ Quote tweeted: {commentary[:50]}...")
+                                    else:
+                                        rate_limiter.record_action("quote", success=False)
+                        except Exception as e:
+                            should_retry, wait_seconds = error_handler.handle_error(e, "quote_tweet")
+                            rate_limiter.record_action("quote", success=False)
                             errors_in_cycle += 1
                             if should_retry and wait_seconds > 0:
                                 time.sleep(wait_seconds)
