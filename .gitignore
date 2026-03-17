@@ -2,7 +2,7 @@
 .env
 .env.local
 .env.*.local
-
+session_b64.txt
 # Python
 __pycache__/
 *.py[cod]
