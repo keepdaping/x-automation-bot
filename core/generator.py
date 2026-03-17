@@ -36,9 +36,19 @@ def _get_client() -> Anthropic:
     return _ai_client
 
 
-def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str:
+def generate_contextual_reply(tweet_text: str, system_prompt: str = None, user_message: str = None) -> str:
+    """Generate content via Claude. Used for both replies and original tweets.
+
+    Args:
+        tweet_text: The tweet to reply to, or a topic seed for original tweets.
+        system_prompt: Custom system prompt.
+        user_message: Custom user message. If None, defaults to reply format.
+    """
     if system_prompt is None:
         system_prompt = _get_default_reply_system_prompt()
+
+    if user_message is None:
+        user_message = f'Reply to this tweet:\n\n"{tweet_text}"'
 
     client = _get_client()
     start_time = time.time()
@@ -49,7 +59,7 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str
                 model=model,
                 max_tokens=Config.AI_MAX_TOKENS,
                 system=system_prompt,
-                messages=[{"role": "user", "content": f'Reply to this tweet:\n\n"{tweet_text}"'}]
+                messages=[{"role": "user", "content": user_message}]
             )
 
             duration = time.time() - start_time
@@ -88,7 +98,9 @@ def generate_contextual_reply(tweet_text: str, system_prompt: str = None) -> str
 
 
 def _get_default_reply_system_prompt() -> str:
-    return """You are writing a natural, authentic reply to a tweet.
+    return """You are a tweet reply ghostwriter. Output ONLY the reply text — nothing else.
+
+CRITICAL: No labels, no "Here's a reply:", no explanations, no options. Just the reply.
 
 VOICE: Conversational, like texting a friend. Show personality. Be honest.
 
@@ -100,8 +112,8 @@ CONSTRAINTS:
 - Never sound like AI
 
 QUALITY SIGNALS:
-✓ GOOD: Adds value (insight, humor, shows you understood)
-✓ GOOD: Feels natural and human
-✗ BAD: Generic ("I agree", "Great point")
-✗ BAD: Corporate speak or robotic
+- GOOD: Adds value (insight, humor, shows you understood)
+- GOOD: Feels natural and human
+- BAD: Generic ("I agree", "Great point")
+- BAD: Corporate speak or robotic
 """

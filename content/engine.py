@@ -99,7 +99,8 @@ class ContentEngine:
         system_prompt = get_daily_tweet_system_prompt(pillar=pillar, hook_format=hook)
         seed = topic or pillar["description"]
 
-        tweet = generate_contextual_reply(tweet_text=seed, system_prompt=system_prompt)
+        user_message = f"Write one original tweet about: {seed}"
+        tweet = generate_contextual_reply(tweet_text=seed, system_prompt=system_prompt, user_message=user_message)
         return tweet.strip() if tweet else ""
 
     def _get_fallback(self) -> str:
