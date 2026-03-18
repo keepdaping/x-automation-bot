@@ -40,7 +40,7 @@ def _is_promoted(tweet) -> bool:
         return False
 
 
-def search_tweets(page, keyword, max_results=5, timeout=15000):
+def search_tweets(page, keyword, max_results=8, timeout=15000):
     try:
         encoded = urllib.parse.quote(keyword)
         search_url = f"https://x.com/search?q={encoded}&f=live"

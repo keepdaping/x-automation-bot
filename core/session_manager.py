@@ -31,7 +31,7 @@ class SessionManager:
         self.min_action_interval_sec = getattr(config, "MIN_ACTION_INTERVAL_SEC", 30)
         self.max_action_interval_sec = getattr(config, "MAX_ACTION_INTERVAL_SEC", 180)
         self.session_continue_probability = getattr(config, "SESSION_CONTINUE_PROBABILITY", 0.25)
-        self.extended_break_probability = getattr(config, "SESSION_EXTENDED_BREAK_PROBABILITY", 0.20)
+        self.extended_break_probability = getattr(config, "SESSION_EXTENDED_BREAK_PROBABILITY", 0.0)
         self.extended_break_min_hours = getattr(config, "SESSION_EXTENDED_BREAK_MIN_HOURS", 2)
         self.extended_break_max_hours = getattr(config, "SESSION_EXTENDED_BREAK_MAX_HOURS", 4)
         self.first_action_delay_min = getattr(config, "FIRST_ACTION_DELAY_SEC_MIN", 30)
