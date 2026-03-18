@@ -11,6 +11,7 @@ import os
 import webbrowser
 from datetime import datetime, timedelta, date
 from pathlib import Path
+from database import get_recent_conversions, get_conversion_stats, init_conversion_tracking
 
 
 def get_db_stats(db_path="data/bot.db"):
@@ -126,7 +127,7 @@ def get_rate_limiter_stats(db_path="data/rate_limiter.db"):
     }
 
 
-def generate_html(bot_stats, rate_stats):
+def generate_html(bot_stats, rate_stats, conv_stats=None, recent_conv=None):
     """Generate the dashboard HTML."""
     today = rate_stats["today"]
     total_today = sum(v for k, v in today.items() if k != "errors")
@@ -148,6 +149,25 @@ def generate_html(bot_stats, rate_stats):
     success_rate = 0
     if rate_stats["total_actions"] + rate_stats["total_errors"] > 0:
         success_rate = round(rate_stats["total_actions"] / (rate_stats["total_actions"] + rate_stats["total_errors"]) * 100, 1)
+
+    # Conversion pipeline data
+    if conv_stats is None:
+        conv_stats = {"total": 0, "high_intent": 0, "curiosity_replies": 0}
+    if recent_conv is None:
+        recent_conv = []
+    conv_total = conv_stats.get("total", 0)
+    conv_high = conv_stats.get("high_intent", 0)
+    conv_curiosity = conv_stats.get("curiosity_replies", 0)
+
+    conv_rows = ""
+    for c in recent_conv:
+        ic = "red" if c["intent_score"] == 3 else "orange"
+        d = c["date"][:10] if c["date"] else "\u2014"
+        tw = (c["tweet"][:80] + "...") if c["tweet"] and len(c["tweet"]) > 80 else (c["tweet"] or "\u2014")
+        rp = (c["reply"][:80] + "...") if c["reply"] and len(c["reply"]) > 80 else (c["reply"] or "\u2014")
+        conv_rows += f"""<tr><td>{d}</td><td class=\"{ic}\">{c["intent_label"]}</td><td>{c["reply_type"]}</td><td>{c["keyword"]}</td><td>{tw}</td><td>{rp}</td></tr>\n"""
+    if not conv_rows:
+        conv_rows = '<tr><td colspan="6" style="color:#666">No high-intent engagements yet</td></tr>'
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -250,6 +270,19 @@ th {{ color: #888; text-transform: uppercase; font-size: 11px; letter-spacing: 1
     </table>
 </div>
 
+<div class="chart-container">
+    <h3>Lead Pipeline (Last 7 Days)</h3>
+    <div class="grid" style="margin-bottom:15px">
+        <div class="card"><div class="label">Tracked Engagements</div><div class="value blue">{conv_total}</div></div>
+        <div class="card"><div class="label">High Intent</div><div class="value red">{conv_high}</div></div>
+        <div class="card"><div class="label">Curiosity Replies</div><div class="value orange">{conv_curiosity}</div></div>
+    </div>
+    <table>
+        <tr><th>Date</th><th>Intent</th><th>Type</th><th>Keyword</th><th>Their Tweet</th><th>Your Reply</th></tr>
+        {conv_rows}
+    </table>
+</div>
+
 <div class="footer">X Automation Bot v2 &middot; Powered by Claude AI</div>
 
 <script>
@@ -295,9 +328,12 @@ new Chart(pillarCtx, {{
 
 def main():
     print("Generating dashboard...")
+    init_conversion_tracking()
     bot_stats = get_db_stats()
     rate_stats = get_rate_limiter_stats()
-    html = generate_html(bot_stats, rate_stats)
+    conv_stats = get_conversion_stats()
+    recent_conv = get_recent_conversions(days=7, limit=20)
+    html = generate_html(bot_stats, rate_stats, conv_stats, recent_conv)
 
     output_path = os.path.join(os.getcwd(), "dashboard.html")
     with open(output_path, "w", encoding="utf-8") as f:

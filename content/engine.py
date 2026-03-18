@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from logger_setup import logger
 from config import Config
-from content.prompts import get_reply_system_prompt, get_daily_tweet_system_prompt, get_fallback_replies, get_quote_tweet_system_prompt
+from content.prompts import get_reply_system_prompt, get_daily_tweet_system_prompt, get_fallback_replies, get_quote_tweet_system_prompt, get_curiosity_reply_prompt
 from content.content_cache import ReplyCache
 from content.content_moderator import ContentModerator
 from core.generator import generate_contextual_reply, get_last_generation_metrics
@@ -109,6 +109,40 @@ class ContentEngine:
         user_message = f"Write a short quote tweet commentary for this tweet:\n\n\"{tweet_text}\""
         text = generate_contextual_reply(tweet_text=tweet_text, system_prompt=system_prompt, user_message=user_message)
         return text.strip() if text else ""
+
+    def generate_curiosity_reply(self, tweet_text: str) -> GenerationResult:
+        """Generate a curiosity-driven reply for high-intent tweets.
+        
+        These replies are designed to make the person click your profile,
+        not just continue the conversation.
+        """
+        try:
+            system_prompt = get_curiosity_reply_prompt()
+            gen_start = time.time()
+            generated_text = generate_contextual_reply(
+                tweet_text=tweet_text,
+                system_prompt=system_prompt,
+                user_message=f'Reply to this tweet from someone who needs help:\n\n"{tweet_text}"'
+            )
+            gen_duration = time.time() - gen_start
+            gen_metrics = get_last_generation_metrics()
+            logger.info(f"Curiosity reply in {gen_duration:.2f}s (model={gen_metrics.get('model')})")
+
+            # Validate
+            is_valid, error = self.moderator.validate(generated_text)
+            if not is_valid:
+                return self.generate_reply(tweet_text)  # Fallback to standard
+
+            quality_score = self.moderator.score_quality(generated_text)
+
+            return GenerationResult(
+                text=generated_text,
+                source="curiosity",
+                quality_score=quality_score,
+            )
+        except Exception as e:
+            logger.error(f"Curiosity reply failed: {e}")
+            return self.generate_reply(tweet_text)  # Fallback to standard
 
     def _get_fallback(self) -> str:
         import random

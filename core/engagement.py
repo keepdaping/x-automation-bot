@@ -24,6 +24,8 @@ from utils.tweet_metrics import get_tweet_metrics
 from utils.engagement_score import score_tweet
 from utils.tweet_text import get_tweet_text
 from utils.language_handler import should_reply_to_tweet_safe
+from utils.intent_scorer import score_intent, get_intent_label
+from database import log_conversion, init_conversion_tracking
 from logger_setup import log
 from config import Config
 
@@ -73,6 +75,9 @@ def run_engagement(page, config=None, keyword=None):
         error_handler = get_error_handler()
         content_engine = get_content_engine()
 
+        # Ensure conversion tracking table exists
+        init_conversion_tracking()
+
         if error_handler.is_in_detection_cooldown():
             log.critical("⏸️  Bot is in detection cooldown - skipping")
             return False
@@ -97,8 +102,14 @@ def run_engagement(page, config=None, keyword=None):
         if random.random() < Config.UNFOLLOW_CHECK_PROBABILITY:
             run_unfollow_cycle(page)
 
-        # Search for tweets
-        search_keyword = keyword or random.choice(Config.SEARCH_KEYWORDS)
+        # Search for tweets — mix topic + intent keywords
+        # 40% chance to use pain-based intent keywords for lead discovery
+        intent_keywords = getattr(Config, 'INTENT_KEYWORDS', [])
+        if intent_keywords and random.random() < 0.40:
+            search_keyword = keyword or random.choice(intent_keywords)
+            log.info(f"Using INTENT keyword: {search_keyword}")
+        else:
+            search_keyword = keyword or random.choice(Config.SEARCH_KEYWORDS)
         log.info(f"Searching for tweets (keyword: {search_keyword})...")
         try:
             tweets = search_tweets(page, search_keyword)
@@ -120,10 +131,18 @@ def run_engagement(page, config=None, keyword=None):
 
             try:
                 metrics = get_tweet_metrics(tweet)
-                score = score_tweet(metrics)
-                log.debug(f"Metrics: {metrics}, Score: {score}")
+                engagement_score = score_tweet(metrics)
+                tweet_text = get_tweet_text(tweet)
+                intent = score_intent(tweet_text)
+                intent_label = get_intent_label(intent)
+                log.debug(f"Score: {engagement_score}, Intent: {intent_label}")
 
-                # LIKE
+                # ===== INTENT-BASED ENGAGEMENT ROUTING =====
+                # High (3)  → always reply (curiosity prompt) + like + follow
+                # Medium (2) → 30% reply (standard) + like
+                # Low (1)   → like only
+
+                # LIKE (always, all intent levels)
                 if random.random() < Config.LIKE_PROBABILITY:
                     if rate_limiter.can_perform_action("like")[0]:
                         try:
@@ -142,35 +161,74 @@ def run_engagement(page, config=None, keyword=None):
                             if should_retry and wait_seconds > 0:
                                 time.sleep(wait_seconds)
 
-                # REPLY
-                if random.random() < Config.REPLY_PROBABILITY:
-                    if rate_limiter.can_perform_action("reply")[0]:
-                        try:
-                            tweet_text = get_tweet_text(tweet)
-                            should_reply, reason = should_reply_to_tweet_safe(tweet_text)
+                # REPLY (intent-based routing)
+                should_try_reply = False
+                use_curiosity = False
 
-                            if should_reply:
+                if intent == 3:
+                    # High intent → always try to reply with curiosity prompt
+                    should_try_reply = True
+                    use_curiosity = True
+                    log.info(f"🎯 HIGH INTENT: {tweet_text[:60]}...")
+                elif intent == 2:
+                    # Medium intent → 30% chance standard reply
+                    should_try_reply = random.random() < 0.30
+                else:
+                    # Low intent → use original probability
+                    should_try_reply = random.random() < Config.REPLY_PROBABILITY
+
+                if should_try_reply and rate_limiter.can_perform_action("reply")[0]:
+                    try:
+                        should_reply, reason = should_reply_to_tweet_safe(tweet_text)
+
+                        if should_reply:
+                            if use_curiosity:
+                                result = content_engine.generate_curiosity_reply(tweet_text)
+                            else:
                                 result = content_engine.generate_reply(tweet_text)
-                                reply = result.text
 
-                                if reply and len(reply) > 0:
-                                    success = reply_tweet(page, tweet, reply)
-                                    if success:
-                                        rate_limiter.record_action("reply", success=True, target_id=None)
-                                        actions_taken += 1
-                                        error_handler.reset_error_counter()
-                                        log.info(f"✓ Replied ({result.source}: quality={result.quality_score:.2f})")
-                                    else:
-                                        rate_limiter.record_action("reply", success=False)
-                        except Exception as e:
-                            should_retry, wait_seconds = error_handler.handle_error(e, "reply_tweet")
-                            rate_limiter.record_action("reply", success=False)
-                            errors_in_cycle += 1
-                            if should_retry and wait_seconds > 0:
-                                time.sleep(wait_seconds)
+                            reply = result.text
 
-                # FOLLOW
-                if random.random() < Config.FOLLOW_PROBABILITY:
+                            if reply and len(reply) > 0:
+                                success = reply_tweet(page, tweet, reply)
+                                if success:
+                                    rate_limiter.record_action("reply", success=True, target_id=None)
+                                    actions_taken += 1
+                                    error_handler.reset_error_counter()
+                                    reply_type = "curiosity" if use_curiosity else "standard"
+                                    log.info(f"✓ Replied [{reply_type}] (intent={intent_label}, quality={result.quality_score:.2f})")
+
+                                    # Log for conversion tracking
+                                    if intent >= 2:
+                                        try:
+                                            log_conversion(
+                                                tweet_text=tweet_text,
+                                                tweet_url="",
+                                                reply_text=reply,
+                                                keyword=search_keyword,
+                                                intent_score=intent,
+                                                intent_label=intent_label,
+                                                reply_type=reply_type,
+                                            )
+                                        except Exception:
+                                            pass
+                                else:
+                                    rate_limiter.record_action("reply", success=False)
+                    except Exception as e:
+                        should_retry, wait_seconds = error_handler.handle_error(e, "reply_tweet")
+                        rate_limiter.record_action("reply", success=False)
+                        errors_in_cycle += 1
+                        if should_retry and wait_seconds > 0:
+                            time.sleep(wait_seconds)
+
+                # FOLLOW (higher chance for high-intent users)
+                follow_chance = Config.FOLLOW_PROBABILITY
+                if intent == 3:
+                    follow_chance = 0.60  # 60% for high-intent
+                elif intent == 2:
+                    follow_chance = 0.30  # 30% for medium-intent
+
+                if random.random() < follow_chance:
                     if rate_limiter.can_perform_action("follow")[0]:
                         try:
                             success = follow_user(tweet)
@@ -178,7 +236,7 @@ def run_engagement(page, config=None, keyword=None):
                                 rate_limiter.record_action("follow", success=True, target_id=None)
                                 actions_taken += 1
                                 error_handler.reset_error_counter()
-                                log.info("✓ Followed user")
+                                log.info(f"✓ Followed user (intent={intent_label})")
                             else:
                                 rate_limiter.record_action("follow", success=False)
                         except Exception as e:

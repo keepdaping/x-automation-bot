@@ -54,6 +54,15 @@ class Config:
         "hot_take,question,thread_hook,contrarian,story,tip"
     ).split(",") if h.strip()]
 
+    # ========== INTENT KEYWORDS (pain-based lead discovery) ==========
+    INTENT_KEYWORDS = [k.strip() for k in os.getenv(
+        "INTENT_KEYWORDS",
+        "no engagement,need clients,struggling to grow,"
+        "nobody sees my posts,how to get followers,"
+        "freelance is hard,no one is buying,need more leads,"
+        "not getting clients,how to monetize,zero sales"
+    ).split(",") if k.strip()]
+
     # ========== RATE LIMITS - DAILY ==========
     MAX_LIKES_PER_DAY = int(os.getenv("MAX_LIKES_PER_DAY", "20"))
     MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "5"))
