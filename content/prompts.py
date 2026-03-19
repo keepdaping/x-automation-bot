@@ -130,50 +130,63 @@ HOOK FORMAT: {hook_format.upper()}
 {VOICE_RULES}
 {pillar_instruction}{hook_instruction}
 CORE RULE:
-- Short > smart
-- Punchy > detailed
-- Emotional > logical
+Short. Sharp. Unpredictable.
 
 TWEET RULES (STRICT):
 - Maximum 2 lines
-- 1-2 sentences total
-- Each line should feel like a punch
-- One idea per tweet only
-- No long storytelling
+- 1 idea per tweet
 - No explanations
-- No filler words
+- No long storytelling
+- Each line must feel like a punch
 
-STRUCTURE (use this formula):
-Pain or truth
+CRITICAL RULE (VERY IMPORTANT):
+DO NOT repeat the same structure across tweets.
+Avoid repeating:
+- "spent X time..."
+- "most people..."
+- "everyone..."
+If tweets look similar → rewrite them differently.
+
+VARIATION SYSTEM (MANDATORY — use a different style each time):
+
+1. DIRECT:
+"you don't need more tools
+you need fewer distractions"
+
+2. QUESTION:
+"what are you actually building right now?"
+
+3. BOLD / CONTROVERSIAL:
+"coding isn't hard
+being consistent is"
+
+4. PUNCHLINE:
+"learned to code
+still waiting more than building 😭"
+
+5. CONTRARIAN:
+"ai doesn't save time
+it exposes how you waste it"
+
+6. PERSONAL (use rarely):
+"i thought learning X would change everything
+it didn't"
+
+STRUCTURE FORMULA:
+Truth / pain
 +
-Twist
+Twist / punchline
 
-EXAMPLES:
-Bad: "I spent 6 months learning to code thinking it would change my life, but I realized the real skill was learning to google better."
-Good:
-spent 6 months learning to code
-turns out i was just learning how to google better 😭
-
-Bad: "Most freelancers waste 10+ hours a week on non-coding tasks like invoicing, emails, and scheduling calls."
-Good:
-most freelancers don't lack skill
-they just waste time on dumb stuff
-
-Bad: "Automation tools don't steal jobs, they just eliminate repetitive tasks."
-Good:
-automation doesn't kill jobs
-it kills the boring parts
-
-HOOK STARTERS (use naturally):
-- "most people…"
-- "nobody talks about…"
-- "everyone thinks…"
-- "spent X months…"
-- "how many of you…"
+HOOK STARTERS:
+- "you..."
+- "this..."
+- "nobody talks about..."
+- "what if..."
+Avoid overusing: "everyone...", "most people..."
 
 EMOJI:
-- Add light emotion when it fits (😭 😂 🤔)
-- Max 1 emoji
+- Optional (max 1)
+- Only when it adds feeling (😂 😭 🤔 😅 😳)
 - Not every tweet needs emoji
 
 CONSTRAINTS:
@@ -183,19 +196,27 @@ CONSTRAINTS:
 - Don't start with "I think..." or "I feel like..."
 
 AVOID:
-- Long paragraphs
+- Repeating formats
 - Explaining your point
 - Sounding like a teacher
-- Complex words
+- Long sentences
+- Predictable patterns
 - Safe or obvious takes
 
-GOAL:
-Make someone reply, think, laugh, or disagree.
+TONE:
+- casual
+- slightly bold
+- human
+- a bit raw
 
-FINAL CHECK:
-- If tweet is more than 2 lines → rewrite shorter
-- If it feels like explanation → simplify
-- If it sounds smart → make it more human
+FINAL CHECK (before output):
+- Does this feel different from previous tweets?
+- Is it short enough (max 2 lines)?
+- Does the second line hit harder than the first?
+If not → rewrite.
+
+GOAL:
+Make people pause, react, reply, or disagree.
 """
 
 
