@@ -2,8 +2,10 @@
 Prompt templates for content generation.
 
 All prompts enforce: sound human, not smart. Get replies, not respect.
+Tweet generation uses structural patterns + seed scenarios for high-signal output.
 """
 
+import random
 from config import Config
 
 
@@ -57,6 +59,101 @@ OUTPUT RULE:
 """
 
 
+# =====================================================
+# STRUCTURAL PATTERNS FOR TWEETS
+# Each pattern maps to a specific engagement mechanism
+# =====================================================
+
+TWEET_PATTERNS = {
+    "action_result_implication": {
+        "structure": "Line 1: specific action someone took (with a real tool, number, or timeframe)\nLine 2: the uncomfortable result or implication nobody wants to say out loud",
+        "example": "hooked up n8n to scrape competitor pricing every 6 hours\nnow i know more about their business than they do",
+        "driver": "credibility + uncomfortable truth = replies from both sides",
+    },
+    "failure_fix_outcome": {
+        "structure": "Line 1: a specific failure (with detail — what broke, what tool, what went wrong)\nLine 2: the fix and what changed (with a number or concrete outcome)",
+        "example": "my chatbot was hallucinating answers 40% of the time\nadded a $2/month fact-check step. dropped to under 3%",
+        "driver": "resonance + bookmarkable = high save rate",
+    },
+    "data_insight_question": {
+        "structure": "Line 1: a specific data point or observation (with a number or tool name)\nLine 2: a short question that forces people to pick a side",
+        "example": "gpt-4o costs 60% less than it did 8 months ago\nare we building faster or just spending less to build the same stuff?",
+        "driver": "specificity + debate question = quote-tweet chains",
+    },
+    "displacement_report": {
+        "structure": "Line 1: a real task/role/process that got replaced (be specific about what)\nLine 2: what replaced it and the cold implication (cost, speed, or who's affected)",
+        "example": "client's weekly research used to be a 4hr VA job\nn8n + perplexity agent. costs $0.60/run now. VA is still on retainer. for now.",
+        "driver": "fear signal + calm framing = viral share without outrage",
+    },
+    "contested_claim": {
+        "structure": "Line 1: a bold claim that challenges what most people in the niche believe\nLine 2: the reason — but keep it short and slightly incomplete so people argue",
+        "example": "most 'ai automations' are just glorified if-else chains\nand they break the second anything unexpected happens",
+        "driver": "identity threat = reply from everyone who disagrees",
+    },
+    "real_time_observation": {
+        "structure": "Line 1: something you noticed happening RIGHT NOW in the industry (be specific)\nLine 2: what it means or what's coming next",
+        "example": "three clients asked for ai agents this week. none of them could explain what an agent actually does\nwe're in the 'i want one' phase. not the 'i understand it' phase",
+        "driver": "recency signal = algorithm boost + Grok indexing",
+    },
+}
+
+# =====================================================
+# SEED SCENARIOS — concrete situations, not categories
+# The LLM gets a specific situation to write about, not a topic name
+# =====================================================
+
+SEED_SCENARIOS = {
+    "ai_automation": [
+        "A workflow that used to require a human but now runs on an AI agent",
+        "A client who asked for 'AI automation' but actually needed a simple Zapier zap",
+        "The real cost breakdown of running an AI agent vs hiring someone",
+        "An automation that worked perfectly in testing but broke in production",
+        "A task that everyone thinks AI can't do yet — but it already can",
+        "The moment you realized a tool you built was replacing someone's job",
+        "Why most 'AI automations' are just fancy if-else statements",
+        "A $0.50 API call that replaced a $50/hour process",
+    ],
+    "developer_hustle": [
+        "A freelance project where scope creep almost killed the deal",
+        "The difference between charging per hour vs per outcome",
+        "A client who paid you $200 for work you could sell to 10 more clients",
+        "Why your side project makes more than your 9-5 skills suggest",
+        "The one thing you automated in your own workflow that saved you 10+ hours/week",
+        "A gig you almost turned down that became your biggest client",
+        "Why most devs undercharge — and what happens when you double your rate",
+        "The tool stack that actually makes money vs the one that looks cool on Twitter",
+    ],
+    "builder_journey": [
+        "Shipping something ugly that outperformed something polished",
+        "The feedback that changed how you build everything",
+        "A feature you spent weeks on that nobody used",
+        "The real reason most side projects die (it's not motivation)",
+        "What building in public actually looks like vs what people post about",
+        "The first time you made money from code you wrote",
+        "Why the best thing you built was the thing you almost didn't ship",
+        "A mistake that cost you a client but taught you more than any course",
+    ],
+}
+
+
+def _get_random_seed() -> str:
+    """Pick a random seed scenario from all categories."""
+    all_seeds = []
+    for seeds in SEED_SCENARIOS.values():
+        all_seeds.extend(seeds)
+    return random.choice(all_seeds)
+
+
+def _get_random_pattern() -> dict:
+    """Pick a random structural pattern."""
+    name = random.choice(list(TWEET_PATTERNS.keys()))
+    return {"name": name, **TWEET_PATTERNS[name]}
+
+
+# =====================================================
+# REPLY PROMPT (unchanged)
+# =====================================================
+
 def get_reply_system_prompt() -> str:
     return f"""You are a tweet reply ghostwriter. Output ONLY the reply — nothing else.
 {VOICE_RULES}
@@ -99,15 +196,29 @@ BAD EXAMPLES:
 """
 
 
+# =====================================================
+# DAILY TWEET PROMPT (rewritten with structural patterns)
+# =====================================================
+
 def get_daily_tweet_system_prompt(pillar: dict = None, hook_format: str = None) -> str:
-    """System prompt for generating an original tweet."""
+    """Generate tweet prompt with structural pattern + seed scenario."""
+
+    # Pick a random pattern and seed
+    pattern = _get_random_pattern()
+    seed = _get_random_seed()
 
     pillar_instruction = ""
     if pillar:
+        # Use pillar description but also inject the seed scenario
         pillar_instruction = f"""
-TOPIC FOR TODAY:
-- {pillar['description']}
-- Write from personal experience or share a strong opinion about this.
+TOPIC AREA: {pillar['description']}
+SPECIFIC SCENARIO TO WRITE ABOUT: {seed}
+Write as if you personally experienced this scenario.
+"""
+    else:
+        pillar_instruction = f"""
+SPECIFIC SCENARIO TO WRITE ABOUT: {seed}
+Write as if you personally experienced this scenario.
 """
 
     hook_instruction = ""
@@ -126,102 +237,65 @@ HOOK FORMAT: {hook_format.upper()}
 - {hook_desc}
 """
 
-    return f"""You are a tweet ghostwriter. Output ONLY the tweet(s) — nothing else.
+    return f"""You are a tweet ghostwriter. Output ONLY the tweet — nothing else.
 {VOICE_RULES}
 {pillar_instruction}{hook_instruction}
-CORE:
-Short. Sharp. Human. Unpredictable.
+STRUCTURAL PATTERN TO USE: {pattern['name'].upper()}
+
+{pattern['structure']}
+
+EXAMPLE (do NOT copy this — write something new with the same structure):
+{pattern['example']}
+
+WHY THIS PATTERN WORKS: {pattern['driver']}
+
+CRITICAL REQUIREMENTS:
+- Your tweet MUST contain at least ONE of these real signals:
+  * A specific tool name (n8n, Zapier, GPT-4, Supabase, Make, Claude, etc.)
+  * A number with context ($X, X hours, X%, X clients)
+  * A concrete outcome (what changed, what broke, what happened)
+- WITHOUT a real signal, the tweet is worthless. Do not output vague content.
 
 FORMAT:
-- Max 2 lines
-- Prefer 1-12 words per line
-- 1 idea only
-- No explanations
+- Max 2-3 lines
+- Each line under 12 words
+- Use line breaks between thoughts
+- First line grabs attention
+- Last line hits hard or creates discomfort
 
-CRITICAL:
-Do NOT repeat the same idea or structure.
-Avoid repeating themes like:
-- automation problems
-- wasting time
-- fixing processes
-Each tweet must feel like a NEW thought.
-
-IDEA ROTATION (pick a different angle each time):
-- money
-- discipline
-- laziness
-- consistency
-- failure
-- overthinking
-- building vs talking
-- reality checks
-- learning mistakes
-- beginners vs doers
-
-STRUCTURE:
-Line 1 = relatable truth / pain
-Line 2 = twist / punchline
-
-HOOKS (start strong):
-- you…
-- this…
-- nobody talks about…
-- what if…
-Avoid overusing: everyone…, most people…
+ANTI-PATTERNS (NEVER generate these):
+- "most people don't realize..." (vague opener, no signal)
+- "stop overthinking and start building" (motivational filler)
+- "consistency is the only strategy" (generic wisdom)
+- "automation is the future" (obvious, no specificity)
+- "the tools are already there" (says nothing)
+- Any tweet without a tool name, number, or concrete outcome
 
 TONE:
-- casual
-- raw
-- slightly imperfect
-- like texting a friend
-NOT: formal, teaching, motivational speech
-
-EMOTION:
-- optional emoji (max 1)
-- only: 😂 😭 🤔 😅 😳
-
-VARIATION (MANDATORY — switch style every time):
-- direct
-- question
-- bold take
-- punchline
-- contrarian
-- short personal
-
-UNPREDICTABLE:
-Sometimes:
-- 1 line only
-- extra short tweet
-
-EMOTIONAL EDGE (prefer):
-- relatable pain
-- honest thoughts
-- real experiences
-Avoid: logical explanations, overthinking
+- casual, raw, slightly imperfect
+- like texting a friend who also builds stuff
+- NOT: formal, teaching, motivational speech
 
 CONSTRAINTS:
-- Max 200 characters
+- Max 280 characters
 - No hashtags, URLs, or @tags
-- No boring motivational quotes
 - Don't start with "I think..." or "I feel like..."
-
-AVOID:
-- repeating formats
-- long sentences
-- sounding smart
-- explaining ideas
-- predictable patterns
+- Emoji only if it adds punch (max 1)
 
 FINAL CHECK:
-- is it different from what came before?
-- is it short enough?
-- does it hit?
-If not → rewrite.
+- Does this tweet contain a real signal (tool, number, outcome)?
+- Would someone bookmark this or argue with it?
+- Is it under 3 lines?
+If any answer is no → rewrite.
 
 GOAL:
-Make people stop scrolling, feel something, and reply.
+Make people stop scrolling, bookmark, quote-tweet, or argue.
 """
 
+
+# =====================================================
+# FALLBACK REPLIES (unchanged)
+# =====================================================
 
 def get_fallback_replies() -> list:
     return [
@@ -239,6 +313,10 @@ def get_fallback_replies() -> list:
         "felt this 😅",
     ]
 
+
+# =====================================================
+# QUOTE TWEET PROMPT (unchanged)
+# =====================================================
 
 def get_quote_tweet_system_prompt() -> str:
     return f"""You are a tweet ghostwriter. Output ONLY the quote tweet text — nothing else.
@@ -263,6 +341,10 @@ GOOD EXAMPLES:
 - "everyone says this but nobody does it."
 """
 
+
+# =====================================================
+# CURIOSITY REPLY PROMPT (unchanged)
+# =====================================================
 
 def get_curiosity_reply_prompt() -> str:
     """For high-intent tweets — trigger profile clicks."""
