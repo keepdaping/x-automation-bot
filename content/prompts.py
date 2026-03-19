@@ -200,7 +200,7 @@ EMOTIONAL EDGE (prefer):
 Avoid: logical explanations, overthinking
 
 CONSTRAINTS:
-- Max 280 characters
+- Max 200 characters
 - No hashtags, URLs, or @tags
 - No boring motivational quotes
 - Don't start with "I think..." or "I feel like..."
