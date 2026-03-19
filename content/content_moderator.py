@@ -1,8 +1,13 @@
 """
 Content validation and quality scoring.
 
-Added: signal_density() for measuring concrete information in tweets.
-Expanded: is_generic() catches authority-killing vague content.
+CHANGES FROM PREVIOUS VERSION:
+1. signal_density() — implication bucket now requires STRONG phrases only
+   (removes "now", "yet", "means", "somehow" which were filler, not signals)
+2. score_quality() — length bonus flattened; signal density carries real weight
+3. has_strong_ending() — new method, checks last line specifically
+4. is_generic() — expanded with ending-specific weak phrases
+5. NICHE_TOOL_SIGNALS deduped with engine.py's KNOWN_TOOLS list
 """
 
 import re
@@ -13,26 +18,81 @@ from logger_setup import logger
 from config import Config
 
 
-# Tool names for signal detection
+# ── Tool list (keep in sync with engine.py KNOWN_TOOLS) ────────────────────
 _SIGNAL_TOOLS = [
     "n8n", "zapier", "make", "gpt", "gpt-4", "gpt-4o", "claude", "chatgpt",
-    "openai", "anthropic", "supabase", "vercel", "nextjs", "python",
-    "playwright", "stripe", "notion", "perplexity", "cursor", "copilot",
-    "langchain", "docker", "api", "webhook",
+    "openai", "anthropic", "supabase", "vercel", "nextjs", "next.js",
+    "python", "playwright", "stripe", "notion", "airtable", "perplexity",
+    "midjourney", "cursor", "github", "copilot", "langchain", "replicate",
+    "huggingface", "firebase", "railway", "render", "docker",
+    "postgres", "redis", "sqlite", "api", "webhook", "cron", "make.com",
 ]
 
-# Outcome verbs
+# ── Outcome verbs ────────────────────────────────────────────────────────────
 _SIGNAL_OUTCOMES = [
     "broke", "fixed", "shipped", "built", "launched", "replaced", "saved",
     "lost", "earned", "charged", "paid", "cost", "dropped", "grew",
-    "doubled", "automated", "crashed", "failed", "sold", "landed",
+    "doubled", "tripled", "automated", "hired", "fired", "quit", "switched",
+    "migrated", "deployed", "crashed", "failed", "sold", "closed", "landed",
+    "deleted", "eliminated", "compressed", "reduced", "killed",
 ]
 
-# Number patterns
+# ── Strong implication phrases ONLY ─────────────────────────────────────────
+# Removed: "now", "yet", "means", "somehow", "worse", "overnight" (too broad)
+# Kept/added: specific phrases that require intentional use
+_SIGNAL_IMPLICATIONS = [
+    "doesn't know yet", "still on retainer", "won't last", "for now",
+    "this is how it starts", "gets cheaper", "changes what",
+    "nobody got", "the job didn't", "they don't know",
+    "asked why they're still", "what happens when",
+    "that's somehow worse", "nobody talks about the part",
+    "the math is", "they only see the",
+    "nobody's scheduled", "that conversation",
+    "budget review", "nobody's had",
+    "still employed", "still exists",
+    "last 20%", "80% of", "first 80",
+    "doesn't know what", "no good answer",
+    "awkward call", "nobody laughed",
+]
+
+# ── Number patterns ──────────────────────────────────────────────────────────
 _SIGNAL_NUMBERS = [
-    r"\$\d+", r"\d+%", r"\d+x", r"\d+k",
+    r"\$\d+",
+    r"\d+%",
+    r"\d+x",
+    r"\d+k",
     r"\d+\s*(?:hours?|hrs?|mins?|days?|weeks?|months?|years?)",
-    r"\d+\s*(?:clients?|users?|runs?|calls?)",
+    r"\d+\s*(?:clients?|users?|runs?|calls?|people|devs?)",
+    r"\d+/(?:month|week|day|run|year|hr|hour)",
+]
+
+# ── Named roles (for ending strength check) ──────────────────────────────────
+_ROLE_SIGNALS = [
+    "va", "virtual assistant", "junior", "senior", "mid-level",
+    "freelancer", "contractor", "developer", "recruiter", "bookkeeper",
+    "cfo", "manager", "team", "client", "employee", "analyst",
+    "researcher", "writer", "copywriter", "ops", "sales rep",
+]
+
+# ── Weak ending phrases ──────────────────────────────────────────────────────
+_WEAK_ENDINGS = [
+    "the tools are there",
+    "adapt or get left behind",
+    "that's the reality",
+    "this is the world we live in",
+    "things are changing",
+    "just something to think about",
+    "make of that what you will",
+    "the future is here",
+    "it is what it is",
+    "time will tell",
+    "changed everything",
+    "and it works",
+    "dropped overnight",       # too vague — who dropped? what dropped?
+    "everyone knows this",
+    "it's only going to get",
+    "we'll see what happens",
+    "interesting times",
 ]
 
 
@@ -54,129 +114,183 @@ class ContentModerator:
     @classmethod
     def validate(cls, text: str) -> Tuple[bool, Optional[str]]:
         if not text or not isinstance(text, str):
-            return False, "Reply is empty"
+            return False, "Empty"
 
         if len(text) < cls.MIN_LENGTH:
-            return False, f"Reply too short (min {cls.MIN_LENGTH} chars)"
+            return False, f"Too short (min {cls.MIN_LENGTH})"
 
         if len(text) > cls.MAX_LENGTH:
-            return False, f"Reply too long ({len(text)} > {cls.MAX_LENGTH} chars)"
+            return False, f"Too long ({len(text)} > {cls.MAX_LENGTH})"
 
         for pattern in cls.BANNED_PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
-                return False, f"Contains banned pattern: {pattern}"
+                return False, f"Banned pattern: {pattern}"
 
         text_lower = text.lower()
         for word in Config.BANNED_WORDS:
             if word in text_lower:
-                return False, f"Contains banned word: {word}"
+                return False, f"Banned word: {word}"
 
         if text.count("!") > 2 or text.count("?") > 2:
             return False, "Excessive punctuation"
 
         if len(text) > 10 and text.isupper():
-            return False, "All caps text"
+            return False, "All caps"
 
         return True, None
 
     @classmethod
     def score_quality(cls, text: str) -> float:
-        """Score content quality 0.0-1.0."""
+        """
+        REDESIGNED:
+        - Length bonus flattened (was over-rewarding short motivational tweets)
+        - Signal density carries the real weight (up to 0.25 bonus)
+        - Strong ending adds 0.10 bonus
+        - Vague ending subtracts 0.10
+        - Vocabulary diversity weight reduced (was rewarding list tweets)
+        """
         score = 0.5
-        length = len(text)
+        text_lower = text.lower()
 
-        # Length scoring
-        if 20 <= length <= 150:
-            score += 0.15
-        elif 150 < length <= 280:
-            score += 0.10
-        elif 10 <= length < 20:
+        # ── Length: flat bonus for any reasonable length ──────────
+        if 30 <= len(text) <= 280:
             score += 0.05
 
-        # Vocabulary diversity
+        # ── Vocabulary diversity (reduced weight) ─────────────────
         words = text.split()
         unique_words = len(set(w.lower() for w in words))
         if len(words) > 0:
-            score += (unique_words / len(words)) * 0.10
+            score += (unique_words / len(words)) * 0.06
 
-        # Sentence count
+        # ── Sentence structure ─────────────────────────────────────
         sentences = [s.strip() for s in re.split(r'[.!?]', text) if s.strip()]
-        if 1 <= len(sentences) <= 3:
-            score += 0.10
+        if 1 <= len(sentences) <= 4:
+            score += 0.07
 
-        # Not generic
-        generic_phrases = [
-            "i agree", "good point", "totally agree", "so true",
-            "100%", "agreed", "yes", "yep", "ok",
-        ]
-        text_lower = text.lower()
+        # ── Not generic ────────────────────────────────────────────
+        generic_phrases = ["i agree", "good point", "totally agree", "so true", "100%", "agreed"]
         if not any(phrase in text_lower for phrase in generic_phrases):
-            score += 0.10
+            score += 0.06
 
-        # Question presence
+        # ── Question presence (reply trigger) ─────────────────────
         if "?" in text:
             score += 0.10
 
-        # Signal density bonus — new scoring dimension
+        # ── Signal density (main quality driver) ──────────────────
         sig = cls.signal_density(text)
-        score += sig * 0.15  # Up to 0.15 bonus for high-signal content
+        score += sig * 0.25  # Up to 0.25 for high-signal content
 
-        # Stylistic markers
-        if any(marker in text for marker in ["—", "'", "..."]):
-            score += 0.05
+        # ── Ending strength ────────────────────────────────────────
+        if cls.has_strong_ending(text):
+            score += 0.10
+        elif cls._has_weak_ending(text):
+            score -= 0.10
 
-        # Emoji control
+        # ── Stylistic markers ──────────────────────────────────────
+        if any(m in text for m in ["—", "'"]):
+            score += 0.03
+
+        # ── Emoji: excessive penalty only ─────────────────────────
         emoji_count = len(re.findall(r'[\U0001F300-\U0001F9FF]', text))
-        if emoji_count <= 2:
-            score += 0.05
-        elif emoji_count > 3:
-            score -= 0.15
+        if emoji_count > 2:
+            score -= 0.10
 
         return min(1.0, max(0.0, score))
 
     @classmethod
     def signal_density(cls, text: str) -> float:
-        """Measure how much concrete information a tweet contains.
-        
-        Returns 0.0-1.0:
-            0.0 = no signals (pure opinion/vague)
-            0.33 = one signal type
-            0.67 = two signal types
-            1.0 = all three signal types present
-        
-        Signal types:
-            1. Tool mention (n8n, GPT-4, Zapier, etc.)
-            2. Number with context ($50, 4 hours, 40%)
-            3. Outcome verb (built, broke, shipped, earned, etc.)
+        """
+        Measure how much concrete information a tweet contains.
+
+        Returns 0.0–1.0.
+        Four buckets: tool, number, outcome, strong implication.
+        Each worth 0.25.
+
+        CHANGE: Implication bucket now requires STRONG phrases only.
+        "now", "yet", "means", "somehow" are NOT counted — they appear
+        in virtually all English sentences and inflate scores falsely.
         """
         text_lower = text.lower()
         signals = 0
 
-        # Check tools
-        for tool in _SIGNAL_TOOLS:
-            if tool in text_lower:
-                signals += 1
-                break
+        # Tool mention
+        if any(tool in text_lower for tool in _SIGNAL_TOOLS):
+            signals += 1
 
-        # Check numbers
-        for pattern in _SIGNAL_NUMBERS:
-            if re.search(pattern, text_lower):
-                signals += 1
-                break
+        # Number with context
+        if any(re.search(p, text_lower) for p in _SIGNAL_NUMBERS):
+            signals += 1
 
-        # Check outcome verbs
-        for word in _SIGNAL_OUTCOMES:
-            if re.search(rf"\b{word}\b", text_lower):
-                signals += 1
-                break
+        # Outcome verb
+        if any(re.search(rf"\b{w}\b", text_lower) for w in _SIGNAL_OUTCOMES):
+            signals += 1
 
-        return round(signals / 3.0, 2)
+        # Strong implication only
+        if any(phrase in text_lower for phrase in _SIGNAL_IMPLICATIONS):
+            signals += 1
+
+        return round(signals / 4.0, 2)
+
+    @classmethod
+    def has_strong_ending(cls, text: str) -> bool:
+        """
+        NEW: Check that the last line of a tweet does real work.
+
+        A strong ending must do at least one of:
+        - Name a specific role or person
+        - Contain a number or dollar amount
+        - Ask a question
+        - Contain a strong implication phrase
+        - State a position or rule
+
+        Does NOT count:
+        - Vague observations ("things are changing")
+        - Soft closures ("it is what it is")
+        """
+        lines = [l.strip() for l in text.strip().split('\n') if l.strip()]
+        if not lines:
+            return False
+        last = lines[-1].lower()
+
+        # Weak ending — immediately return False
+        if cls._has_weak_ending(text):
+            return False
+
+        # Strong: named role
+        if any(role in last for role in _ROLE_SIGNALS):
+            return True
+
+        # Strong: number in last line
+        if any(re.search(p, last) for p in _SIGNAL_NUMBERS):
+            return True
+
+        # Strong: question
+        if "?" in last:
+            return True
+
+        # Strong: implication phrase
+        if any(phrase in last for phrase in _SIGNAL_IMPLICATIONS):
+            return True
+
+        # Strong: outcome verb
+        if any(re.search(rf"\b{w}\b", last) for w in _SIGNAL_OUTCOMES):
+            return True
+
+        return False
+
+    @classmethod
+    def _has_weak_ending(cls, text: str) -> bool:
+        lines = [l.strip() for l in text.strip().split('\n') if l.strip()]
+        if not lines:
+            return False
+        last = lines[-1].lower()
+        return any(phrase in last for phrase in _WEAK_ENDINGS)
 
     @classmethod
     def is_generic(cls, text: str) -> bool:
-        """Detect generic content that kills authority.
-        
-        Catches both low-effort replies AND vague motivational content.
+        """
+        EXPANDED: Catches low-effort replies, motivational filler, AND
+        weak ending patterns that look finished but aren't.
         """
         text_lower = text.lower()
 
@@ -188,7 +302,7 @@ class ContentModerator:
         if any(phrase in text_lower for phrase in low_effort):
             return True
 
-        # Authority-killing vague patterns (new)
+        # Authority-killing vague patterns
         vague_authority = [
             "stop overthinking and start",
             "consistency is the only",
@@ -197,8 +311,13 @@ class ContentModerator:
             "the secret is",
             "work smarter not harder",
             "hustle culture",
-            "grind mindset",
             "unlock your potential",
+            "automation is the future",
+            "ai will change everything",
+            "the future is here",
+            "adapt or die",
+            "learn to code",
+            "trust the process",
         ]
         if any(phrase in text_lower for phrase in vague_authority):
             return True
