@@ -71,7 +71,7 @@ class SessionManager:
         self.actions_in_session = 0
         first_action_delay = random.randint(self.first_action_delay_min, self.first_action_delay_max)
         self.last_action_time = self.session_start_time - timedelta(seconds=first_action_delay)
-        self.session_action_target = max(2, int(self.session_duration_sec / 300))
+        self.session_action_target = random.randint(8, 12)
         self.current_state = SessionState.ACTIVE_SESSION
         session_end = self.session_start_time + timedelta(seconds=self.session_duration_sec)
         log.info(f"\n📱 SESSION START | {self.session_duration_sec//60}min | target: {self.session_action_target} actions | until: {session_end.strftime('%H:%M:%S')}\n")
@@ -220,7 +220,7 @@ class SessionManager:
                     self.session_duration_sec = None
                     self.actions_in_session = 0
             if self.current_state == SessionState.ACTIVE_SESSION and self.session_duration_sec and not self.session_action_target:
-                self.session_action_target = max(2, int(self.session_duration_sec / 300))
+                self.session_action_target = random.randint(8, 12)
             log.info(f"✓ Restored session state: {self.current_state.value}")
         except Exception as e:
             log.error(f"Failed to load session state: {e}")

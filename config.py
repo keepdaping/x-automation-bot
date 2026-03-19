@@ -65,7 +65,7 @@ class Config:
 
     # ========== RATE LIMITS - DAILY ==========
     MAX_LIKES_PER_DAY = int(os.getenv("MAX_LIKES_PER_DAY", "20"))
-    MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "5"))
+    MAX_REPLIES_PER_DAY = int(os.getenv("MAX_REPLIES_PER_DAY", "15"))
     MAX_FOLLOWS_PER_DAY = int(os.getenv("MAX_FOLLOWS_PER_DAY", "10"))
     MAX_UNFOLLOWS_PER_DAY = int(os.getenv("MAX_UNFOLLOWS_PER_DAY", "5"))
     MAX_POSTS_PER_DAY = int(os.getenv("MAX_POSTS_PER_DAY", "1"))
@@ -73,7 +73,7 @@ class Config:
 
     # ========== RATE LIMITS - HOURLY ==========
     MAX_LIKES_PER_HOUR = int(os.getenv("MAX_LIKES_PER_HOUR", "3"))
-    MAX_REPLIES_PER_HOUR = int(os.getenv("MAX_REPLIES_PER_HOUR", "1"))
+    MAX_REPLIES_PER_HOUR = int(os.getenv("MAX_REPLIES_PER_HOUR", "2"))
     MAX_FOLLOWS_PER_HOUR = int(os.getenv("MAX_FOLLOWS_PER_HOUR", "2"))
 
     # ========== UNFOLLOW SETTINGS ==========
