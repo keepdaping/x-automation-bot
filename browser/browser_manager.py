@@ -104,3 +104,37 @@ class BrowserManager:
         except Exception as e:
             log.error(f"Auth check failed: {e}")
             return False
+
+    # =====================================================================
+    # NEW: Outcome checking methods for feedback loop
+    # =====================================================================
+
+    def check_is_following(self, user_handle: str) -> bool:
+        """Check if we are currently following this user (safe, used by feedback)."""
+        try:
+            self.page.goto(f"https://x.com/{user_handle}", wait_until="domcontentloaded", timeout=8000)
+            time.sleep(1.5)
+            following_btn = self.page.locator("div[role='button']:has-text('Following')").first
+            if following_btn and following_btn.is_visible(timeout=3000):
+                return True
+            return False
+        except Exception:
+            return False
+
+    def check_user_replied(self, reply_id: str, user_handle: str) -> bool:
+        """Check if the user replied to our reply (basic implementation)."""
+        try:
+            if not reply_id:
+                return False
+            self.page.goto(f"https://x.com/i/status/{reply_id}", wait_until="domcontentloaded", timeout=8000)
+            time.sleep(2)
+            # Look for any reply from the user in the thread
+            user_reply = self.page.locator(f"article:has-text('@{user_handle}')").first
+            return user_reply.is_visible(timeout=3000)
+        except Exception:
+            return False
+
+    def check_for_dm(self, user_handle: str) -> bool:
+        """Placeholder for DM detection (harder - high detection risk)."""
+        # TODO: Implement safely later (e.g. notifications page scan)
+        return False

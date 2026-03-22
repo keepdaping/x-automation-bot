@@ -54,6 +54,23 @@ def init_db():
             unfollowed_at TIMESTAMP
         );
 
+                CREATE TABLE IF NOT EXISTS interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sent_at TEXT NOT NULL,
+            tweet_id TEXT,
+            reply_id TEXT,
+            user_handle TEXT,
+            tweet_text TEXT,
+            reply_text TEXT,
+            intent TEXT,
+            reply_style TEXT,
+            got_reply_back INTEGER DEFAULT 0,
+            got_follow INTEGER DEFAULT 0,
+            got_dm INTEGER DEFAULT 0,
+            checked_at TEXT,
+            score INTEGER DEFAULT 0
+        );
+
         CREATE INDEX IF NOT EXISTS idx_follows_date ON follows(followed_at);
         CREATE INDEX IF NOT EXISTS idx_follows_unfollowed ON follows(unfollowed_at);
     """)

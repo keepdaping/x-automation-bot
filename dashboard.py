@@ -12,6 +12,7 @@ import webbrowser
 from datetime import datetime, timedelta, date
 from pathlib import Path
 from database import get_recent_conversions, get_conversion_stats, init_conversion_tracking
+from feedback import FeedbackTracker
 
 
 def get_db_stats(db_path="data/bot.db"):
@@ -127,8 +128,8 @@ def get_rate_limiter_stats(db_path="data/rate_limiter.db"):
     }
 
 
-def generate_html(bot_stats, rate_stats, conv_stats=None, recent_conv=None):
-    """Generate the dashboard HTML."""
+def generate_html(bot_stats, rate_stats, conv_stats=None, recent_conv=None, feedback_stats=None):
+    """Generate the dashboard HTML with Reply & Follow Performance section."""
     today = rate_stats["today"]
     total_today = sum(v for k, v in today.items() if k != "errors")
 
@@ -162,12 +163,29 @@ def generate_html(bot_stats, rate_stats, conv_stats=None, recent_conv=None):
     conv_rows = ""
     for c in recent_conv:
         ic = "red" if c["intent_score"] == 3 else "orange"
-        d = c["date"][:10] if c["date"] else "\u2014"
-        tw = (c["tweet"][:80] + "...") if c["tweet"] and len(c["tweet"]) > 80 else (c["tweet"] or "\u2014")
-        rp = (c["reply"][:80] + "...") if c["reply"] and len(c["reply"]) > 80 else (c["reply"] or "\u2014")
-        conv_rows += f"""<tr><td>{d}</td><td class=\"{ic}\">{c["intent_label"]}</td><td>{c["reply_type"]}</td><td>{c["keyword"]}</td><td>{tw}</td><td>{rp}</td></tr>\n"""
+        d = c["date"][:10] if c["date"] else "—"
+        tw = (c["tweet"][:80] + "...") if c["tweet"] and len(c["tweet"]) > 80 else (c["tweet"] or "—")
+        rp = (c["reply"][:80] + "...") if c["reply"] and len(c["reply"]) > 80 else (c["reply"] or "—")
+        conv_rows += f"""<tr><td>{d}</td><td class="{ic}">{c["intent_label"]}</td><td>{c["reply_type"]}</td><td>{c["keyword"]}</td><td>{tw}</td><td>{rp}</td></tr>\n"""
     if not conv_rows:
         conv_rows = '<tr><td colspan="6" style="color:#666">No high-intent engagements yet</td></tr>'
+
+    # Reply & Follow Performance table
+    feedback_rows = ""
+    if feedback_stats:
+        for row in feedback_stats:
+            intent, style, total, replies, follows, dms, avg_score = row
+            feedback_rows += f"""<tr>
+                <td>{intent or 'unknown'}</td>
+                <td>{style or 'default'}</td>
+                <td>{total}</td>
+                <td>{replies}</td>
+                <td>{follows}</td>
+                <td>{dms}</td>
+                <td>{f"{avg_score:.1f}" if avg_score is not None else '-'}</td>
+            </tr>\n"""
+    if not feedback_rows:
+        feedback_rows = '<tr><td colspan="7" style="color:#666">No reply/follow data yet - run the bot a few times</td></tr>'
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -283,6 +301,15 @@ th {{ color: #888; text-transform: uppercase; font-size: 11px; letter-spacing: 1
     </table>
 </div>
 
+<div class="chart-container">
+    <h3>Reply & Follow Performance by Intent & Style</h3>
+    <table>
+        <tr><th>Intent</th><th>Style</th><th>Total</th><th>Replies Back</th><th>Follows</th><th>DMs</th><th>Avg Score</th></tr>
+        {feedback_rows}
+    </table>
+    <p style="font-size:12px; color:#666; margin-top:10px;">Score = 3×replies + 5×follows + 10×DMs</p>
+</div>
+
 <div class="footer">X Automation Bot v2 &middot; Powered by Claude AI</div>
 
 <script>
@@ -333,7 +360,13 @@ def main():
     rate_stats = get_rate_limiter_stats()
     conv_stats = get_conversion_stats()
     recent_conv = get_recent_conversions(days=7, limit=20)
-    html = generate_html(bot_stats, rate_stats, conv_stats, recent_conv)
+
+    # Load feedback stats
+    tracker = FeedbackTracker()
+    feedback_stats = tracker.get_stats()
+    tracker.close()
+
+    html = generate_html(bot_stats, rate_stats, conv_stats, recent_conv, feedback_stats)
 
     output_path = os.path.join(os.getcwd(), "dashboard.html")
     with open(output_path, "w", encoding="utf-8") as f:

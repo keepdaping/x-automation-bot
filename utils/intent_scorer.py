@@ -38,7 +38,12 @@ HIGH_INTENT_PHRASES = [
     "what am i doing wrong", "what am i missing",
     "any tips on", "advice on growing",
     "i need help", "someone help",
+    # Added high-pain signals (stronger buying intent)
+    "desperate for", "really struggling", "losing money",
+    "business dying", "account dead", "nothing working",
+    "please help", "urgent", "emergency",
 ]
+
 
 # Medium-intent phrases — person is actively building/learning
 MEDIUM_INTENT_PHRASES = [
@@ -50,6 +55,10 @@ MEDIUM_INTENT_PHRASES = [
     "side project", "side hustle",
     "building in public", "shipping",
     "growing my", "grow my account",
+    # Added subtle buying signals (research phase)
+    "looking for", "considering", "thinking about",
+    "best way to", "how to start", "which tool",
+    "worth it?", "good idea?",
 ]
 
 
@@ -62,7 +71,7 @@ def score_intent(tweet_text: str) -> int:
 
     Returns:
         3 = high intent (pain/need)
-        2 = medium intent (building/learning)
+        2 = medium intent (building/learning/research)
         1 = low intent (general)
     """
     if not tweet_text:
@@ -70,22 +79,24 @@ def score_intent(tweet_text: str) -> int:
 
     text_lower = tweet_text.lower()
 
-    # Check high-intent phrases first
+    # Priority 1: Strong pain signals → HIGH intent
     for phrase in HIGH_INTENT_PHRASES:
         if phrase in text_lower:
             log.debug(f"High intent detected: '{phrase}'")
             return 3
 
-    # Check medium-intent phrases
+    # Priority 2: Question + research signals → MEDIUM intent
+    question_count = text_lower.count("?")
+    if question_count >= 2:
+        log.debug(f"Medium intent: multiple questions ({question_count})")
+        return 2
+
     for phrase in MEDIUM_INTENT_PHRASES:
         if phrase in text_lower:
             log.debug(f"Medium intent detected: '{phrase}'")
             return 2
 
-    # Question marks suggest seeking help (slight bump)
-    if text_lower.count("?") >= 2:
-        return 2
-
+    # Default: LOW intent
     return 1
 
 
