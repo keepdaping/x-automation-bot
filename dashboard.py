@@ -187,6 +187,8 @@ def generate_html(bot_stats, rate_stats, conv_stats=None, recent_conv=None, feed
     if not feedback_rows:
         feedback_rows = '<tr><td colspan="7" style="color:#666">No reply/follow data yet - run the bot a few times</td></tr>'
 
+    generated_time = datetime.now().strftime('%Y-%m-%d %H:%M')
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -223,7 +225,7 @@ th {{ color: #888; text-transform: uppercase; font-size: 11px; letter-spacing: 1
 <body>
 <div class="header">
     <h1>X Bot Dashboard</h1>
-    <p>@KeepdapingB &middot; Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+    <p>@KeepdapingB &middot; Generated {generated_time}</p>
 </div>
 
 <div class="grid">
