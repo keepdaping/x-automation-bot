@@ -5,6 +5,10 @@ FIXED:
 - Engagement loop no longer nested under DAILY_TWEET_ENABLED check
 - Daily tweet and engagement are independent code paths
 - Proper timezone handling throughout
+
+ADDED:
+- FeedbackTracker initialization
+- Scheduler for periodic outcome checking (follows, replies back, DMs)
 """
 
 import time
@@ -18,11 +22,13 @@ from core.engagement import run_engagement
 from core.rate_limiter import init_rate_limiter
 from core.error_handler import init_error_handler
 from core.session_manager import init_session_manager
+from core.scheduler import start_scheduler  # NEW: import scheduler
 from config import Config
 from database import init_db, count_posts_today, get_last_daily_post_date, has_posted_today, is_duplicate, save_post
 from logger_setup import log
 from actions.tweet import post_tweet
 from content.engine import get_content_engine
+from feedback import FeedbackTracker  # NEW: for manual stats if needed
 
 
 class BotController:
@@ -52,6 +58,9 @@ class BotController:
         self.rate_limiter = init_rate_limiter(Config)
         self.session_manager = init_session_manager(Config)
 
+        # NEW: Initialize feedback tracker (used in engagement)
+        self.feedback_tracker = FeedbackTracker()
+
         signal.signal(signal.SIGINT, self.shutdown)
         signal.signal(signal.SIGTERM, self.shutdown)
 
@@ -60,6 +69,8 @@ class BotController:
         self.running = False
         if self.browser:
             self.browser.close()
+        if hasattr(self, 'feedback_tracker'):
+            self.feedback_tracker.close()
         log.info("Bot stopped cleanly")
         sys.exit(0)
 
@@ -185,6 +196,9 @@ class BotController:
             if self.daily_posted_today:
                 log.info(f"✓ Daily tweet already posted today")
 
+            # NEW: Start background scheduler for outcome checking
+            start_scheduler()
+
             log.info("\nStarting engagement loop (Ctrl+C to stop)\n")
 
             cycle_count = 0
@@ -231,7 +245,12 @@ class BotController:
                 log.info(f"{'#'*50}\n")
 
                 try:
-                    run_engagement(self.page, Config, keyword=self._get_next_search_topic())
+                    run_engagement(
+                        self.page,
+                        Config,
+                        keyword=self._get_next_search_topic(),
+                        feedback_tracker=self.feedback_tracker  # NEW: pass tracker to engagement
+                    )
                     self.session_manager.record_action()
                 except Exception as e:
                     log.error(f"Cycle error: {e}")

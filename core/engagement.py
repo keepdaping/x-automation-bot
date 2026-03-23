@@ -278,7 +278,7 @@ def _select_search_keyword(keyword):
     return search_keyword
 
 
-def run_engagement(page, config=None, keyword=None):
+def run_engagement(page, config=None, keyword=None, feedback_tracker=None):
     """
     Run one cycle of engagement with all safety checks.
     
@@ -290,7 +290,7 @@ def run_engagement(page, config=None, keyword=None):
         content_engine = get_content_engine()
 
         # NEW: Feedback tracker
-        feedback = FeedbackTracker()
+        feedback = feedback_tracker if feedback_tracker else FeedbackTracker()
 
         # Ensure conversion tracking table exists
         init_conversion_tracking()
