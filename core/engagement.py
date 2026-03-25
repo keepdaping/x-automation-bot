@@ -4,6 +4,8 @@ FIXED: Engagement loop no longer nested under DAILY_TWEET_ENABLED check.
 ADDED: Unfollow strategy integration.
 """
 
+
+
 import random
 import time
 from typing import Optional
@@ -24,7 +26,10 @@ from utils.tweet_metrics import get_tweet_metrics
 from utils.engagement_score import score_tweet
 from utils.tweet_text import get_tweet_text
 from utils.language_handler import should_reply_to_tweet_safe
+
 from utils.intent_scorer import score_intent, get_intent_label
+from utils.llm_intent_scorer import get_llm_intent_scorer  # NEW
+
 from database import log_conversion, init_conversion_tracking
 from logger_setup import log
 from config import Config
@@ -110,19 +115,16 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine, sea
                             log.warning(f"Feedback log failed: {e}")
 
                         # Log for conversion tracking
-                        if intent >= 2:
-                            try:
-                                log_conversion(
-                                    tweet_text=tweet_text,
-                                    tweet_url="",
-                                    reply_text=reply,
-                                    keyword=search_keyword,
-                                    intent_score=intent,
-                                    intent_label=intent_label,
-                                    reply_type=reply_type,
-                                )
-                            except Exception:
-                                pass
+                                # === PHASE 1: LLM INTENT (safe toggle) ===
+                        if Config.INTENT_MODE == "llm" or Config.INTENT_MODE == "hybrid":
+                            llm_result = get_llm_intent_scorer().score(tweet_text)
+                            intent = llm_result["intent_score"]
+                            intent_label = llm_result["level"]
+                            log.debug(f"LLM intent used: {intent_label}")
+                        else:
+                            intent = score_intent(tweet_text)
+                            intent_label = get_intent_label(intent)
+                            
                     else:
                         rate_limiter.record_action("reply", success=False)
         except Exception as e:

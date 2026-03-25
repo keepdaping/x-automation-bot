@@ -68,7 +68,10 @@ def init_db():
             got_follow INTEGER DEFAULT 0,
             got_dm INTEGER DEFAULT 0,
             checked_at TEXT,
-            score INTEGER DEFAULT 0
+            score INTEGER DEFAULT 0,
+            llm_score INTEGER DEFAULT 0,
+            conversation_turns INTEGER DEFAULT 0,
+            outcome_score INTEGER DEFAULT 0
         );
 
         CREATE INDEX IF NOT EXISTS idx_follows_date ON follows(followed_at);

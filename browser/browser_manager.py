@@ -52,7 +52,7 @@ class BrowserManager:
                 try:
                     self.page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=15000)
                 except Exception:
-                    self.page.goto("https://x.com", wait_until="domcontentloaded", timeout=15000)
+                    self.page.goto("https://x.com", wait_until="load", timeout=60000)
                 time.sleep(2)
                 dismiss_cookie_modal(self.page)
                 time.sleep(1)

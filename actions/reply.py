@@ -14,6 +14,11 @@ def reply_tweet(page, tweet, text, timeout=10000):
     Reply to a tweet with human-like typing.
     Returns (success: bool, reply_id: str or None) so we can track it.
     """
+
+        # Phase 2: Multi-turn memory
+    if Config.CONVERSATION_ENABLED:
+        from content.conversation_graph import generate_next_reply
+        text = generate_next_reply(text, "", [])  # user_handle & history passed from engagement later
     try:
         reply_btn = tweet.locator(REPLY_BUTTON).first
         if not reply_btn:

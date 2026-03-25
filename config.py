@@ -159,6 +159,19 @@ class Config:
     MIN_LIKES_FOR_VIRAL = 20
     MIN_REPLIES_FOR_VIRAL = 3
 
+        # ========== MIGRATION FLAGS (2026 redesign) ==========
+    # Phase 1: Intent detection
+    INTENT_MODE = os.getenv("INTENT_MODE", "keyword")  # "keyword" | "hybrid" | "llm"
+
+    # Phase 2+: Conversations
+    CONVERSATION_ENABLED = os.getenv("CONVERSATION_ENABLED", "false").lower() == "true"
+
+    # Phase 3+: Self-improving
+    FEEDBACK_ANALYSIS_ENABLED = os.getenv("FEEDBACK_ANALYSIS_ENABLED", "false").lower() == "true"
+
+    # Safety during migration
+    AGGRESSION_LEVEL = float(os.getenv("AGGRESSION_LEVEL", "0.6"))  # 0.0-1.0 multiplier for rates
+
     @classmethod
     def validate(cls):
         errors = []

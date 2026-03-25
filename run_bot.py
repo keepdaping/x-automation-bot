@@ -11,6 +11,8 @@ ADDED:
 - Scheduler for periodic outcome checking (follows, replies back, DMs)
 """
 
+
+
 import time
 import random
 import signal
@@ -202,6 +204,10 @@ class BotController:
             log.info("\nStarting engagement loop (Ctrl+C to stop)\n")
 
             cycle_count = 0
+
+                    # Phase 4: Start basic queue worker
+            from utils.simple_queue import start_worker
+            start_worker()
             while self.running:
                 cycle_count += 1
                 current_time = datetime.now(timezone.utc)
