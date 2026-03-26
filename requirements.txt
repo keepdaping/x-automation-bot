@@ -4,4 +4,4 @@ loguru>=0.7.0
 playwright>=1.40.0
 langdetect>=1.0.9
 textblob>=0.17.0
-apscheduler
+APScheduler>=3.10.0
