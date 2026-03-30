@@ -243,13 +243,21 @@ class ContentModerator:
         """Detect generic, low-authority content that kills engagement."""
         text_lower = text.lower()
 
-        # Low-effort reply patterns
-        low_effort = [
+        # Multi-word phrases are specific enough to match at any length.
+        low_effort_phrases = [
             "i agree", "good point", "great point", "so true",
+        ]
+        if any(phrase in text_lower for phrase in low_effort_phrases):
+            return True
+
+        # Single tokens are only reliable low-effort signals in very short text
+        # (≤ 40 chars). In longer tweets these tokens appear in legitimate context,
+        # e.g. "100% of the VAs I know still export data manually" is not generic.
+        low_effort_tokens = [
             "100%", "agreed", "yes", "yep", "ok", "interesting", "nice",
             "fair", "true", "facts", "real", "relatable",
         ]
-        if any(phrase in text_lower for phrase in low_effort):
+        if len(text.strip()) <= 40 and any(token in text_lower for token in low_effort_tokens):
             return True
 
         # Vague motivational / authority-killing patterns

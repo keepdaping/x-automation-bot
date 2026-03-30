@@ -7,8 +7,12 @@ from utils.selectors import FOLLOW_BUTTON
 from database import save_follow
 from logger_setup import log
 
-# NEW: Feedback tracking integration
-from feedback import FeedbackTracker
+# Known non-user URL paths that the regex must not match as usernames
+_NON_USER_PATHS = {
+    "home", "explore", "messages", "notifications", "settings",
+    "i", "search", "compose", "following", "followers", "bookmarks",
+    "lists", "topics", "connect_people", "who_to_follow",
+}
 
 
 def _extract_user_info(tweet) -> dict:
@@ -19,10 +23,13 @@ def _extract_user_info(tweet) -> dict:
         links = tweet.locator("a[href*='/']").all()
         for link in links:
             href = link.get_attribute("href")
-            if href and re.match(r"^/[A-Za-z0-9_]+$", href):
-                info["username"] = href.strip("/")
-                info["user_id"] = info["username"]  # Use username as ID for now
-                break
+            # Twitter usernames: 1–15 alphanumeric/underscore chars, single path segment
+            if href and re.match(r"^/[A-Za-z0-9_]{1,15}$", href):
+                candidate = href.strip("/")
+                if candidate not in _NON_USER_PATHS:
+                    info["username"] = candidate
+                    info["user_id"] = candidate  # Use username as ID for now
+                    break
     except Exception:
         pass
     return info
@@ -59,24 +66,6 @@ def follow_user(tweet, timeout=5000):
         if user_info["user_id"]:
             save_follow(user_info["user_id"], user_info["username"])
             log.debug(f"Tracked follow: @{user_info['username']}")
-
-        # NEW: Log follow to feedback tracker if we have context
-        # (This assumes the caller can pass tweet_id later; for now we log basic info)
-        try:
-            feedback = FeedbackTracker()
-            tweet_id = tweet.get_attribute("data-testid-tweet-id") or ""
-            feedback.log_reply(  # reusing log_reply as a general action log - can rename later
-                tweet_id=tweet_id,
-                reply_id="",  # no reply here
-                user_handle=user_handle or "",
-                tweet_text="",  # optional: pass from caller
-                reply_text="",  # not applicable
-                intent="follow_action",  # placeholder
-                reply_style="follow"
-            )
-            feedback.close()
-        except Exception as e:
-            log.warning(f"Follow feedback logging failed: {e}")
 
         random_delay()
         return True, user_handle

@@ -1,10 +1,12 @@
 """
 Main engagement engine with rate limiting and error recovery.
+
 FIXED: Engagement loop no longer nested under DAILY_TWEET_ENABLED check.
+FIXED: Removed unused get_llm_intent_scorer import (the post-reply dead block
+       that called it was removed in Phase 1; import was the only reference).
 ADDED: Unfollow strategy integration.
+ADDED: Feedback tracker ownership guard (only close locally-created trackers).
 """
-
-
 
 import random
 import time
@@ -28,13 +30,11 @@ from utils.tweet_text import get_tweet_text
 from utils.language_handler import should_reply_to_tweet_safe
 
 from utils.intent_scorer import score_intent, get_intent_label
-from utils.llm_intent_scorer import get_llm_intent_scorer  # NEW
 
 from database import log_conversion, init_conversion_tracking
 from logger_setup import log
 from config import Config
 
-# NEW: Feedback tracking
 from feedback import FeedbackTracker
 
 
@@ -72,7 +72,9 @@ def _browse_timeline(page, rate_limiter):
         log.debug(f"Timeline browse error: {e}")
 
 
-def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine, search_keyword, tweet_text, intent, intent_label, use_curiosity, feedback):
+def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
+                   search_keyword, tweet_text, intent, intent_label,
+                   use_curiosity, feedback):
     """Attempt to reply to a tweet. Returns (actions_taken, errors_in_cycle)"""
     actions_taken = 0
     errors_in_cycle = 0
@@ -96,35 +98,27 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine, sea
                         actions_taken += 1
                         error_handler.reset_error_counter()
                         reply_type = "curiosity" if use_curiosity else "standard"
-                        log.info(f"✓ Replied [{reply_type}] (intent={intent_label}, quality={result.quality_score:.2f}) | Reply ID: {reply_id}")
+                        log.info(
+                            f"✓ Replied [{reply_type}] "
+                            f"(intent={intent_label}, quality={result.quality_score:.2f}) "
+                            f"| Reply ID: {reply_id}"
+                        )
 
-                        # === FEEDBACK LOGGING ===
+                        # Feedback logged here (single source of truth)
                         try:
                             tweet_id = tweet.get_attribute("data-testid-tweet-id") or ""
-                            user_handle = ""  # extracted in reply_tweet if needed
                             feedback.log_reply(
                                 tweet_id=tweet_id,
                                 reply_id=reply_id or "",
-                                user_handle=user_handle,
+                                user_handle="",
                                 tweet_text=tweet_text,
                                 reply_text=reply,
                                 intent=intent_label,
-                                reply_style=reply_type
+                                reply_style=reply_type,
                             )
                         except Exception as e:
                             log.warning(f"Feedback log failed: {e}")
 
-                        # Log for conversion tracking
-                                # === PHASE 1: LLM INTENT (safe toggle) ===
-                        if Config.INTENT_MODE == "llm" or Config.INTENT_MODE == "hybrid":
-                            llm_result = get_llm_intent_scorer().score(tweet_text)
-                            intent = llm_result["intent_score"]
-                            intent_label = llm_result["level"]
-                            log.debug(f"LLM intent used: {intent_label}")
-                        else:
-                            intent = score_intent(tweet_text)
-                            intent_label = get_intent_label(intent)
-                            
                     else:
                         rate_limiter.record_action("reply", success=False)
         except Exception as e:
@@ -151,17 +145,17 @@ def _attempt_follow(tweet, rate_limiter, error_handler, intent_label, feedback):
                 error_handler.reset_error_counter()
                 log.info(f"✓ Followed @{followed_handle} (intent={intent_label})")
 
-                # === FEEDBACK LOGGING ===
+                # Feedback logged here (single source of truth)
                 try:
                     tweet_id = tweet.get_attribute("data-testid-tweet-id") or ""
                     feedback.log_reply(
                         tweet_id=tweet_id,
-                        reply_id="",  # not a reply
-                        user_handle=followed_handle,
+                        reply_id="",
+                        user_handle=followed_handle or "",
                         tweet_text="",
                         reply_text="",
                         intent=intent_label,
-                        reply_style="follow"
+                        reply_style="follow",
                     )
                 except Exception as e:
                     log.warning(f"Follow feedback log failed: {e}")
@@ -208,7 +202,8 @@ def _attempt_quote(tweet, page, rate_limiter, error_handler, content_engine):
     return actions_taken, errors_in_cycle
 
 
-def _process_single_tweet(tweet, page, rate_limiter, error_handler, content_engine, search_keyword, feedback):
+def _process_single_tweet(tweet, page, rate_limiter, error_handler,
+                           content_engine, search_keyword, feedback):
     """
     Process a single tweet for engagement actions.
     Returns (actions_taken, errors_in_cycle)
@@ -238,7 +233,11 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler, content_engi
             should_try_reply = random.random() < Config.REPLY_PROBABILITY
 
         if should_try_reply:
-            actions, errors = _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine, search_keyword, tweet_text, intent, intent_label, use_curiosity, feedback)
+            actions, errors = _attempt_reply(
+                tweet, page, rate_limiter, error_handler, content_engine,
+                search_keyword, tweet_text, intent, intent_label,
+                use_curiosity, feedback,
+            )
             actions_taken += actions
             errors_in_cycle += errors
 
@@ -250,13 +249,17 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler, content_engi
             follow_chance = 0.30
 
         if random.random() < follow_chance:
-            actions, errors = _attempt_follow(tweet, rate_limiter, error_handler, intent_label, feedback)
+            actions, errors = _attempt_follow(
+                tweet, rate_limiter, error_handler, intent_label, feedback
+            )
             actions_taken += actions
             errors_in_cycle += errors
 
         # QUOTE TWEET (10% chance)
         if random.random() < 0.10:
-            actions, errors = _attempt_quote(tweet, page, rate_limiter, error_handler, content_engine)
+            actions, errors = _attempt_quote(
+                tweet, page, rate_limiter, error_handler, content_engine
+            )
             actions_taken += actions
             errors_in_cycle += errors
 
@@ -271,7 +274,7 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler, content_engi
 
 def _select_search_keyword(keyword):
     """Select a search keyword, preferring intent keywords occasionally."""
-    intent_keywords = getattr(Config, 'INTENT_KEYWORDS', [])
+    intent_keywords = getattr(Config, "INTENT_KEYWORDS", [])
     if intent_keywords and random.random() < 0.40:
         search_keyword = keyword or random.choice(intent_keywords)
         log.info(f"Using INTENT keyword: {search_keyword}")
@@ -283,15 +286,17 @@ def _select_search_keyword(keyword):
 def run_engagement(page, config=None, keyword=None, feedback_tracker=None):
     """
     Run one cycle of engagement with all safety checks.
-    
-    FIXED: This function is now independent of DAILY_TWEET_ENABLED.
+
+    FIXED: Independent of DAILY_TWEET_ENABLED.
+    FIXED: Only closes FeedbackTracker when we created it (not the caller's).
     """
     try:
         rate_limiter = get_rate_limiter()
         error_handler = get_error_handler()
         content_engine = get_content_engine()
 
-        # NEW: Feedback tracker
+        # Track ownership so we only close what we create
+        _owns_feedback = feedback_tracker is None
         feedback = feedback_tracker if feedback_tracker else FeedbackTracker()
 
         # Ensure conversion tracking table exists
@@ -341,11 +346,16 @@ def run_engagement(page, config=None, keyword=None, feedback_tracker=None):
 
         for idx, tweet in enumerate(tweets, 1):
             log.debug(f"\n--- Processing tweet {idx}/{len(tweets)} ---")
-            actions, errors = _process_single_tweet(tweet, page, rate_limiter, error_handler, content_engine, search_keyword, feedback)
+            actions, errors = _process_single_tweet(
+                tweet, page, rate_limiter, error_handler,
+                content_engine, search_keyword, feedback,
+            )
             actions_taken += actions
             errors_in_cycle += errors
 
-        feedback.close()  # clean up
+        if _owns_feedback:
+            feedback.close()
+
         log.info(f"\nCYCLE COMPLETE: {actions_taken} actions, {errors_in_cycle} errors\n")
         return actions_taken > 0
 

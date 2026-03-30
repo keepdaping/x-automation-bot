@@ -4,9 +4,7 @@ import time
 from utils.human_behavior import random_delay, human_typing
 from utils.selectors import REPLY_BUTTON, REPLY_TEXTAREA
 from logger_setup import log
-
-# NEW: Feedback tracking
-from feedback import FeedbackTracker
+from config import Config
 
 
 def reply_tweet(page, tweet, text, timeout=10000):
@@ -65,26 +63,6 @@ def reply_tweet(page, tweet, text, timeout=10000):
 
         random_delay()
         success = True
-
-        # NEW: Log to feedback tracker if we have basic info
-        try:
-            feedback = FeedbackTracker()
-            # Get parent tweet ID and user handle (you may need to pass these from caller)
-            # For now we use placeholders - improve later when caller passes them
-            tweet_id = tweet.get_attribute("data-testid-tweet-id") or ""
-            user_handle = tweet.locator("a[href*='/status/']").first.get_attribute("href").split("/")[1] if tweet else ""
-            feedback.log_reply(
-                tweet_id=tweet_id,
-                reply_id=reply_id or "",
-                user_handle=user_handle,
-                tweet_text="",          # Pass real text from caller if possible
-                reply_text=text,
-                intent="unknown",       # Pass real intent from caller
-                reply_style="default"   # Pass real style from caller
-            )
-            feedback.close()
-        except Exception as e:
-            log.warning(f"Feedback logging failed: {e}")
 
         return success, reply_id
 

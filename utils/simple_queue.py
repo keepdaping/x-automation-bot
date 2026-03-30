@@ -5,6 +5,7 @@ Phase 4: Basic queue (thread-safe, no external Redis yet)
 from queue import Queue
 from threading import Thread
 import time
+from logger_setup import log
 
 job_queue = Queue()
 

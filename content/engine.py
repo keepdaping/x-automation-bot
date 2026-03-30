@@ -27,6 +27,16 @@ from content.content_moderator import ContentModerator
 from core.generator import generate_contextual_reply, get_last_generation_metrics
 
 
+def is_vague_content(text: str) -> bool:
+    """Return True if the text is vague/generic and should be rejected."""
+    return ContentModerator.is_generic(text)
+
+
+def has_real_signal(text: str) -> bool:
+    """Return True if the text has sufficient concrete signal density (>= 0.75)."""
+    return ContentModerator.signal_density(text) >= 0.75
+
+
 @dataclass
 class GenerationResult:
     text: str
@@ -132,6 +142,10 @@ class ContentEngine:
         best_signal = 0.0
         best_quality = 0.0
 
+        # Hard wall-clock budget — prevents the retry loop from blocking
+        # the main thread for minutes when the LLM is slow.
+        generation_deadline = time.time() + 90  # 90-second max
+
         # Retry strategies — each adds stricter constraints
         retry_strategies = [
             None,  # Attempt 0: normal generation
@@ -144,6 +158,10 @@ class ContentEngine:
         ]
 
         for attempt in range(max_retries + 1):
+            if time.time() > generation_deadline:
+                logger.warning(f"Daily tweet generation timed out after 90s (attempt {attempt})")
+                break
+
             # Build fresh prompt — new pattern + seed each time
             system_prompt = get_daily_tweet_system_prompt(pillar=pillar, hook_format=hook)
             

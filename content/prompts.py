@@ -3,6 +3,10 @@ Prompt templates for content generation.
 
 All prompts enforce: sound human, not smart. Get replies, not respect.
 Tweet generation uses structural patterns + seed scenarios for high-signal output.
+
+FIXED: get_daily_tweet_system_prompt() now accepts optional pillar and
+hook_format arguments (engine.py passes these from Config; the old signature
+caused a TypeError crash on every daily tweet attempt).
 """
 
 import random
@@ -243,13 +247,36 @@ Start conversation
 # DAILY TWEET (enhanced for DM attraction)
 # =====================================================
 
-def get_daily_tweet_system_prompt() -> str:
+def get_daily_tweet_system_prompt(pillar: dict = None, hook_format: str = None) -> str:
+    """
+    Build the system prompt for daily original tweet generation.
 
-    pattern = _get_random_pattern()
+    Args:
+        pillar: Content pillar dict from Config.get_content_pillar(), e.g.
+                {"name": "money", "description": "Making money online..."}
+                When provided, steers the topic toward that theme.
+        hook_format: Viral hook style from Config.get_viral_hook(), e.g.
+                     "hot_take", "question", "contrarian", "story", "tip".
+                     When provided, steers the opening structure.
+    """
     seed = _get_random_seed()
 
-    return f"""You are a tweet ghostwriter.
+    # Incorporate pillar context when available
+    pillar_block = ""
+    if pillar and pillar.get("name"):
+        pillar_block = (
+            f"\nCONTENT FOCUS: {pillar['name'].title()} — "
+            f"{pillar.get('description', '')}\n"
+        )
 
+    # Incorporate hook format when available
+    hook_block = ""
+    if hook_format:
+        readable_hook = hook_format.replace("_", " ").title()
+        hook_block = f"\nHOOK STYLE: {readable_hook}\n"
+
+    return f"""You are a tweet ghostwriter.
+{pillar_block}{hook_block}
 SCENARIO:
 {seed}
 
