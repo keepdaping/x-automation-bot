@@ -112,7 +112,7 @@ def search_tweets(page, keyword, max_results=8, timeout=15000):
                         continue
 
                     metrics = get_tweet_metrics(tweet)
-                    if sum(metrics.values()) < 3:
+                    if metrics["likes"] + metrics["replies"] + metrics["retweets"] < 3:
                         continue
 
                     s = score_tweet(metrics)
