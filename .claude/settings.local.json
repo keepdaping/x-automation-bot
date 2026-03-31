@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Test-Path \"c:\\\\Users\\\\MAI-WAY\\\\Desktop\\\\x-automation-bot\\\\README.md\")"
+    ]
+  }
+}
