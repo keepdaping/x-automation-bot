@@ -30,6 +30,47 @@ class Config:
     # ========== SEARCH & ENGAGEMENT ==========
     SEARCH_KEYWORDS = [k.strip() for k in os.getenv("SEARCH_KEYWORDS", "AI,python,automation,tech,startup").split(",")]
 
+    # SEARCH_PHRASES: 2-5 word phrases that X search reliably returns results for.
+    # Backward compatible: falls back to SEARCH_KEYWORDS + INTENT_KEYWORDS if not set.
+    _SEARCH_PHRASES_DEFAULT = (
+        "need more clients,nobody sees my content,struggling to get engagement,"
+        "how do I grow on twitter,getting zero impressions,freelancing is so hard,"
+        "no one is buying,need help with automation,cant find clients,"
+        "my tweets get no reach,tired of no engagement,how to get followers,"
+        "not making money freelancing,AI tools for business,need to automate my workflow,"
+        "building my first SaaS,just started freelancing,learning to code in python,"
+        "shipped my first project,building in public update,side project progress,"
+        "trying to grow my account,started my own business,first paying customer,"
+        "working on AI project,n8n workflow automation,AI agent for business,"
+        "automated my workflow,replaced manual process,using AI to save time,"
+        "built an automation,chatbot for customer support,AI replacing tasks,"
+        "workflow automation tools,zapier vs make"
+    )
+    _env_phrases = os.getenv("SEARCH_PHRASES")
+    if _env_phrases:
+        SEARCH_PHRASES = [k.strip() for k in _env_phrases.split(",") if k.strip()]
+    else:
+        _intent_kws = [k.strip() for k in os.getenv("INTENT_KEYWORDS", "").split(",") if k.strip()]
+        _combined = SEARCH_KEYWORDS + _intent_kws
+        SEARCH_PHRASES = _combined if _combined else [
+            k.strip() for k in _SEARCH_PHRASES_DEFAULT.split(",") if k.strip()
+        ]
+
+    # ========== REFLECTION & GROK ==========
+    REFLECTION_ENABLED = os.getenv("REFLECTION_ENABLED", "true").lower() == "true"
+    GROK_STYLE = os.getenv("GROK_STYLE", "true").lower() == "true"
+
+    GROK_SYSTEM_INSTRUCTION = os.getenv(
+        "GROK_SYSTEM_INSTRUCTION",
+        "You are Grok-inspired: maximally truth-seeking and helpful. "
+        "Be direct, honest, and evidence-based. "
+        "Cut the corporate fluff, exaggerated promises, and overly polite curiosity bait. "
+        "Acknowledge real problems plainly. Use light wit or sarcasm only when it adds value. "
+        "Base every suggestion on what actually works for AI/automation tools. "
+        "Output ONLY the reply — nothing else. Under 30 words. "
+        "Goal: help the user solve their real problem so they DM for more help.",
+    )
+
     LIKE_PROBABILITY = float(os.getenv("LIKE_PROBABILITY", "0.6"))
     REPLY_PROBABILITY = float(os.getenv("REPLY_PROBABILITY", "0.25"))
     FOLLOW_PROBABILITY = float(os.getenv("FOLLOW_PROBABILITY", "0.15"))

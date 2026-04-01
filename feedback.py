@@ -40,14 +40,20 @@ class FeedbackTracker:
                 score INTEGER DEFAULT 0,
                 llm_score INTEGER DEFAULT 0,
                 conversation_turns INTEGER DEFAULT 0,
-                outcome_score INTEGER DEFAULT 0
+                outcome_score INTEGER DEFAULT 0,
+                reflection_summary TEXT
             )
         """)
+        # Add column when upgrading from an older schema that lacks it
+        try:
+            self.conn.execute("ALTER TABLE interactions ADD COLUMN reflection_summary TEXT")
+        except Exception:
+            pass  # Column already exists
         self.conn.commit()
 
     def log_reply(self, tweet_id: str, reply_id: str, user_handle: str,
                   tweet_text: str, reply_text: str, intent: str,
-                  reply_style: str = "default"):
+                  reply_style: str = "default", reflection_summary: str = ""):
         """Log a reply right after it is successfully sent."""
         now = datetime.now(timezone.utc).isoformat()
         try:
@@ -55,8 +61,9 @@ class FeedbackTracker:
                 """
                 INSERT INTO interactions
                 (sent_at, tweet_id, reply_id, user_handle, tweet_text, reply_text,
-                 intent, reply_style, llm_score, conversation_turns, outcome_score)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+                 intent, reply_style, llm_score, conversation_turns, outcome_score,
+                 reflection_summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)
                 """,
                 (
                     now,
@@ -67,6 +74,7 @@ class FeedbackTracker:
                     (reply_text or "")[:500],
                     intent,
                     reply_style,
+                    (reflection_summary or "")[:300],
                 ),
             )
             self.conn.commit()

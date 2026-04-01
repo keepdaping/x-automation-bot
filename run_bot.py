@@ -77,7 +77,7 @@ class BotController:
         sys.exit(0)
 
     def _refresh_search_topics(self):
-        self._session_search_topics = list(Config.SEARCH_KEYWORDS)
+        self._session_search_topics = list(getattr(Config, "SEARCH_PHRASES", Config.SEARCH_KEYWORDS))
         random.shuffle(self._session_search_topics)
         self._session_search_index = 0
 
@@ -254,8 +254,8 @@ class BotController:
                     run_engagement(
                         self.page,
                         Config,
-                        keyword=self._get_next_search_topic(),
-                        feedback_tracker=self.feedback_tracker  # NEW: pass tracker to engagement
+                        keyword=None,  # engagement.py drives intelligent phrase selection
+                        feedback_tracker=self.feedback_tracker
                     )
                     self.session_manager.record_action()
                 except Exception as e:

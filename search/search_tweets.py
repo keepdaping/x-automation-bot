@@ -112,7 +112,14 @@ def search_tweets(page, keyword, max_results=8, timeout=15000):
                         continue
 
                     metrics = get_tweet_metrics(tweet)
-                    if metrics["likes"] + metrics["replies"] + metrics["retweets"] < 3:
+                    _total_eng = metrics["likes"] + metrics["replies"] + metrics["retweets"]
+                    _pain_phrase = any(
+                        p in keyword.lower()
+                        for p in ["client", "engagement", "impression", "reach",
+                                  "sales", "follower", "grow", "monetize",
+                                  "struggling", "help", "income", "freelanc"]
+                    )
+                    if _total_eng < 1 and not _pain_phrase:
                         continue
 
                     s = score_tweet(metrics)
