@@ -14,7 +14,6 @@ The bot uses this to decide HOW to engage:
 
 import re
 from logger_setup import log
-from config import Config
 
 # High-intent phrases — person is expressing a NEED or PAIN
 HIGH_INTENT_PHRASES = [
@@ -61,10 +60,6 @@ MEDIUM_INTENT_PHRASES = [
     "worth it?", "good idea?",
 ]
 
-# DEPRECATED – kept for backward compatibility during Phase 1 migration
-# Use utils.llm_intent_scorer.py when Config.INTENT_MODE == "llm"
-if Config.INTENT_MODE != "keyword":
-    log.warning("🔄 Using legacy keyword intent scorer – consider switching to LLM mode")
 def score_intent(tweet_text: str) -> int:
     """
     Score a tweet's intent level.

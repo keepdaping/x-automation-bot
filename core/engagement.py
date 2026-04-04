@@ -1,11 +1,11 @@
 """
-Main engagement engine with rate limiting and error recovery.
+Engagement orchestrator — search, routing, and cycle management.
 
-FIXED: Engagement loop no longer nested under DAILY_TWEET_ENABLED check.
-FIXED: Removed unused get_llm_intent_scorer import (the post-reply dead block
-       that called it was removed in Phase 1; import was the only reference).
-ADDED: Unfollow strategy integration.
-ADDED: Feedback tracker ownership guard (only close locally-created trackers).
+Decomposed modules:
+  core/reply_handler.py  — _attempt_reply
+  core/follow_handler.py — _attempt_follow
+  core/quote_handler.py  — _attempt_quote
+  core/pipeline.py       — _process_single_tweet
 """
 
 import random
@@ -16,22 +16,13 @@ from typing import Optional
 from utils.human_behavior import natural_scroll
 from search.search_tweets import search_tweets
 from actions.like import like_tweet
-from actions.reply import reply_tweet
-from actions.follow import follow_user
-from actions.quote_tweet import quote_tweet
 from actions.unfollow import run_unfollow_cycle
 from utils.selectors import TWEET_ARTICLE, TWEET_TIMESTAMP
 
-from content.engine import get_content_engine, GenerationResult
+from content.engine import get_content_engine
 from core.rate_limiter import get_rate_limiter
 from core.error_handler import get_error_handler
-from core.generator import generate_contextual_reply
-from utils.tweet_metrics import get_tweet_metrics
-from utils.engagement_score import score_tweet
-from utils.tweet_text import get_tweet_text
-from utils.language_handler import should_reply_to_tweet_safe
-from utils.intent_scorer import score_intent, get_intent_label
-from utils.llm_intent_scorer import get_llm_intent_scorer
+from core.pipeline import _process_single_tweet
 
 from database import (
     log_conversion, init_conversion_tracking,
@@ -152,266 +143,6 @@ def _browse_timeline(page, rate_limiter):
 
     except Exception as e:
         log.debug(f"Timeline browse error: {e}")
-
-
-def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
-                   search_keyword, tweet_text, intent, intent_label,
-                   use_curiosity, feedback, reflection_summary=""):
-    """Attempt to reply to a tweet. Returns (actions_taken, errors_in_cycle)"""
-    actions_taken = 0
-    errors_in_cycle = 0
-
-    if rate_limiter.can_perform_action("reply")[0]:
-        try:
-            should_reply, reason = should_reply_to_tweet_safe(tweet_text)
-
-            if should_reply:
-                # --- Reply generation strategy ---
-                if use_curiosity and getattr(Config, "GROK_STYLE", True):
-                    # Grok-style: direct, truth-seeking, bypasses curiosity fluff
-                    user_msg = f'Reply to this tweet from someone who needs real help:\n\n"{tweet_text}"'
-                    if reflection_summary:
-                        user_msg += f"\n\nContext about their pain: {reflection_summary}"
-                    generated_text = generate_contextual_reply(
-                        tweet_text=tweet_text,
-                        system_prompt=Config.GROK_SYSTEM_INSTRUCTION,
-                        user_message=user_msg,
-                    )
-                    # Moderation guard — Grok path skips content_engine so validate inline
-                    from content.content_moderator import ContentModerator
-                    _grok_valid = (
-                        generated_text
-                        and len(generated_text.strip()) >= 8
-                        and ContentModerator.validate(generated_text)[0]
-                        and not ContentModerator.is_generic(generated_text)
-                    )
-                    if _grok_valid:
-                        result = GenerationResult(
-                            text=generated_text,
-                            source="grok",
-                            quality_score=0.85,
-                        )
-                        reply_type = "grok"
-                    else:
-                        log.warning("Grok reply failed moderation — falling back to curiosity")
-                        result = content_engine.generate_curiosity_reply(tweet_text)
-                        reply_type = "curiosity"
-                elif use_curiosity:
-                    result = content_engine.generate_curiosity_reply(tweet_text)
-                    reply_type = "curiosity"
-                else:
-                    result = content_engine.generate_reply(tweet_text)
-                    reply_type = "standard"
-
-                reply = result.text
-
-                if reply and len(reply) > 0:
-                    success, reply_id = reply_tweet(page, tweet, reply)
-                    if success:
-                        rate_limiter.record_action("reply", success=True, target_id=reply_id)
-                        actions_taken += 1
-                        error_handler.reset_error_counter()
-                        log.info(
-                            f"✓ Replied [{reply_type}] "
-                            f"(intent={intent_label}, quality={result.quality_score:.2f}) "
-                            f"| Reply ID: {reply_id}"
-                        )
-
-                        # Feedback logged here (single source of truth)
-                        try:
-                            tweet_id = tweet.get_attribute("data-testid-tweet-id") or ""
-                            feedback.log_reply(
-                                tweet_id=tweet_id,
-                                reply_id=reply_id or "",
-                                user_handle="",
-                                tweet_text=tweet_text,
-                                reply_text=reply,
-                                intent=intent_label,
-                                reply_style=reply_type,
-                                reflection_summary=reflection_summary,
-                            )
-                        except Exception as e:
-                            log.warning(f"Feedback log failed: {e}")
-
-                    else:
-                        rate_limiter.record_action("reply", success=False)
-        except Exception as e:
-            should_retry, wait_seconds = error_handler.handle_error(e, "reply_tweet")
-            rate_limiter.record_action("reply", success=False)
-            errors_in_cycle += 1
-            if should_retry and wait_seconds > 0:
-                time.sleep(wait_seconds)
-
-    return actions_taken, errors_in_cycle
-
-
-def _attempt_follow(tweet, rate_limiter, error_handler, intent_label, feedback):
-    """Attempt to follow a user. Returns (actions_taken, errors_in_cycle)"""
-    actions_taken = 0
-    errors_in_cycle = 0
-
-    if rate_limiter.can_perform_action("follow")[0]:
-        try:
-            success, followed_handle = follow_user(tweet)
-            if success:
-                rate_limiter.record_action("follow", success=True, target_id=followed_handle)
-                actions_taken += 1
-                error_handler.reset_error_counter()
-                log.info(f"✓ Followed @{followed_handle} (intent={intent_label})")
-
-                # Feedback logged here (single source of truth)
-                try:
-                    tweet_id = tweet.get_attribute("data-testid-tweet-id") or ""
-                    feedback.log_reply(
-                        tweet_id=tweet_id,
-                        reply_id="",
-                        user_handle=followed_handle or "",
-                        tweet_text="",
-                        reply_text="",
-                        intent=intent_label,
-                        reply_style="follow",
-                    )
-                except Exception as e:
-                    log.warning(f"Follow feedback log failed: {e}")
-            else:
-                rate_limiter.record_action("follow", success=False)
-        except Exception as e:
-            should_retry, wait_seconds = error_handler.handle_error(e, "follow_user")
-            rate_limiter.record_action("follow", success=False)
-            errors_in_cycle += 1
-            if should_retry and wait_seconds > 0:
-                time.sleep(wait_seconds)
-
-    return actions_taken, errors_in_cycle
-
-
-def _attempt_quote(tweet, page, rate_limiter, error_handler, content_engine):
-    """Attempt to quote a tweet. Returns (actions_taken, errors_in_cycle)"""
-    actions_taken = 0
-    errors_in_cycle = 0
-
-    if rate_limiter.can_perform_action("quote")[0]:
-        try:
-            tweet_text = get_tweet_text(tweet)
-            should_reply, reason = should_reply_to_tweet_safe(tweet_text)
-
-            if should_reply and len(tweet_text) > 20:
-                commentary = content_engine.generate_quote_text(tweet_text)
-                if commentary and len(commentary) > 5:
-                    success = quote_tweet(page, tweet, commentary)
-                    if success:
-                        rate_limiter.record_action("quote", success=True, target_id=None)
-                        actions_taken += 1
-                        error_handler.reset_error_counter()
-                        log.info(f"✓ Quote tweeted: {commentary[:50]}...")
-                    else:
-                        rate_limiter.record_action("quote", success=False)
-        except Exception as e:
-            should_retry, wait_seconds = error_handler.handle_error(e, "quote_tweet")
-            rate_limiter.record_action("quote", success=False)
-            errors_in_cycle += 1
-            if should_retry and wait_seconds > 0:
-                time.sleep(wait_seconds)
-
-    return actions_taken, errors_in_cycle
-
-
-def _process_single_tweet(tweet, page, rate_limiter, error_handler,
-                           content_engine, search_keyword, feedback):
-    """
-    Process a single tweet for engagement actions.
-    Returns (actions_taken, errors_in_cycle)
-    """
-    actions_taken = 0
-    errors_in_cycle = 0
-
-    was_high_intent = False
-
-    try:
-        metrics = get_tweet_metrics(tweet)
-        engagement_score = score_tweet(metrics)
-        tweet_text = get_tweet_text(tweet)
-        intent = score_intent(tweet_text)
-        intent_label = get_intent_label(intent)
-        log.debug(f"Score: {engagement_score}, Intent: {intent_label}")
-
-        # ===== CHANGE 8: LLM reflection on high-intent tweets =====
-        reflection_summary = ""
-        if intent == 3 and getattr(Config, "REFLECTION_ENABLED", True):
-            try:
-                llm_scorer = get_llm_intent_scorer()
-                llm_result = llm_scorer.score(tweet_text)
-                # Downgrade if the tweet is negated ("I WAS struggling but now I'm fine")
-                if llm_result.get("negation_check"):
-                    intent = min(intent, 2)
-                    intent_label = get_intent_label(intent)
-                    log.info(f"🔄 LLM downgraded intent (negation): {llm_result['reason']}")
-                elif llm_result.get("intent_score", 3) < intent:
-                    intent = llm_result["intent_score"]
-                    intent_label = get_intent_label(intent)
-                    log.info(f"🔄 LLM adjusted intent to {llm_result['level']}: {llm_result['reason']}")
-                pain_points = llm_result.get("pain_points", [])
-                reason = llm_result.get("reason", "")
-                reflection_summary = (
-                    f"Pain: {', '.join(pain_points)}. {reason}" if pain_points else reason
-                )
-                if reflection_summary:
-                    log.info(f"🔍 Reflection: {reflection_summary}")
-            except Exception as e:
-                log.warning(f"LLM reflection skipped: {e}")
-
-        # ===== INTENT-BASED ENGAGEMENT ROUTING =====
-        should_try_reply = False
-        use_curiosity = False
-
-        if intent == 3:
-            was_high_intent = True
-            should_try_reply = True
-            use_curiosity = True
-            log.info(f"🎯 HIGH INTENT: {tweet_text[:60]}...")
-        elif intent == 2:
-            should_try_reply = random.random() < 0.30
-        else:
-            should_try_reply = random.random() < Config.REPLY_PROBABILITY
-
-        if should_try_reply:
-            actions, errors = _attempt_reply(
-                tweet, page, rate_limiter, error_handler, content_engine,
-                search_keyword, tweet_text, intent, intent_label,
-                use_curiosity, feedback, reflection_summary,
-            )
-            actions_taken += actions
-            errors_in_cycle += errors
-
-        # FOLLOW (higher chance for high-intent users)
-        follow_chance = Config.FOLLOW_PROBABILITY
-        if intent == 3:
-            follow_chance = 0.60
-        elif intent == 2:
-            follow_chance = 0.30
-
-        if random.random() < follow_chance:
-            actions, errors = _attempt_follow(
-                tweet, rate_limiter, error_handler, intent_label, feedback
-            )
-            actions_taken += actions
-            errors_in_cycle += errors
-
-        # QUOTE TWEET (10% chance)
-        if random.random() < 0.10:
-            actions, errors = _attempt_quote(
-                tweet, page, rate_limiter, error_handler, content_engine
-            )
-            actions_taken += actions
-            errors_in_cycle += errors
-
-        time.sleep(random.uniform(1, 3))
-
-    except Exception as e:
-        log.error(f"Error processing tweet: {e}")
-        errors_in_cycle += 1
-
-    return actions_taken, errors_in_cycle, was_high_intent
 
 
 def _select_search_keyword(keyword):

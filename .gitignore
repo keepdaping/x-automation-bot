@@ -18,11 +18,8 @@ user_data/
 
 # Logs
 *.log
-data/error_history.log
-data/detection_events.log
-data/fatal_errors.log
-data/detection_cooldown.txt
-data/session_state.txt
+data/
+dashboard.html
 
 # IDE
 .vscode/
@@ -37,3 +34,4 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+logs/
