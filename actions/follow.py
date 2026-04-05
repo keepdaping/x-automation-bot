@@ -59,13 +59,19 @@ def follow_user(tweet, timeout=5000):
         except Exception:
             follow_btn.click(timeout=timeout, force=True)
 
-        # Extract user info for tracking
+        # Extract user info for tracking.
+        # Fall back to a timestamp-based sentinel so the follow is always
+        # persisted even when the DOM link regex fails — prevents silent data loss.
         user_info = _extract_user_info(tweet)
         user_handle = user_info["username"]
 
-        if user_info["user_id"]:
-            save_follow(user_info["user_id"], user_info["username"])
-            log.debug(f"Tracked follow: @{user_info['username']}")
+        follow_id = user_info["user_id"] or user_info["username"]
+        if not follow_id:
+            # Last-resort: record with a placeholder so rate limiter + DB stay in sync
+            import time as _time
+            follow_id = f"unknown_{int(_time.time())}"
+        save_follow(follow_id, user_info["username"] or "")
+        log.debug(f"Tracked follow: @{user_info['username'] or follow_id}")
 
         random_delay()
         return True, user_handle

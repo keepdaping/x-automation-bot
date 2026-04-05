@@ -309,7 +309,7 @@ th {{ color: #888; text-transform: uppercase; font-size: 11px; letter-spacing: 1
         <tr><th>Intent</th><th>Style</th><th>Total</th><th>Replies Back</th><th>Follows</th><th>DMs</th><th>Avg Score</th></tr>
         {feedback_rows}
     </table>
-    <p style="font-size:12px; color:#666; margin-top:10px;">Score = 3×replies + 5×follows + 10×DMs</p>
+    <p style="font-size:12px; color:#666; margin-top:10px;">Score = 3×reply-back + 2×follow + 5×DM (max 10)</p>
 </div>
 
 <div class="footer">X Automation Bot v2 &middot; Powered by Claude AI</div>

@@ -44,13 +44,19 @@ def count_posts_today() -> int:
 def get_last_daily_post_date() -> date | None:
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT created_at FROM posts WHERE format = 'daily' ORDER BY created_at DESC LIMIT 1")
+    # Use SQLite's built-in UTC conversion so the comparison is timezone-consistent.
+    # CURRENT_TIMESTAMP is stored as local time by SQLite; strftime with 'utc' modifier
+    # normalises it regardless of server timezone.
+    cur.execute(
+        "SELECT strftime('%Y-%m-%d', created_at, 'utc') FROM posts "
+        "WHERE format = 'daily' ORDER BY created_at DESC LIMIT 1"
+    )
     row = cur.fetchone()
     conn.close()
     if not row or not row[0]:
         return None
     try:
-        return datetime.fromisoformat(row[0]).date()
+        return date.fromisoformat(row[0])
     except Exception:
         return None
 

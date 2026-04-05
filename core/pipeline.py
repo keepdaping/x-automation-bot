@@ -13,6 +13,7 @@ from utils.llm_intent_scorer import get_llm_intent_scorer
 from core.reply_handler import _attempt_reply
 from core.follow_handler import _attempt_follow
 from core.quote_handler import _attempt_quote
+from core.policy import get_policy_engine
 from logger_setup import log
 from config import Config
 
@@ -61,45 +62,49 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler,
             except Exception as e:
                 log.warning(f"LLM reflection skipped: {e}")
 
-        # ===== INTENT-BASED ENGAGEMENT ROUTING =====
+        # ===== POLICY-DRIVEN ENGAGEMENT ROUTING =====
+        # PolicyEngine reads RewardAggregator data and returns evidence-adjusted
+        # probabilities. Falls back to Config defaults when data is insufficient.
+        import time as _time
+        policy = get_policy_engine()
+        probs = policy.get_action_probabilities({
+            "intent":           intent,
+            "keyword":          search_keyword,
+            "engagement_score": engagement_score,
+            "time_hour":        _time.gmtime().tm_hour,
+        })
+
         should_try_reply = False
         use_curiosity = False
 
         if intent == 3:
             was_high_intent = True
-            should_try_reply = True
+            should_try_reply = True          # always engage high-intent
             use_curiosity = True
             log.info(f"🎯 HIGH INTENT: {tweet_text[:60]}...")
-        elif intent == 2:
-            should_try_reply = random.random() < 0.30
         else:
-            should_try_reply = random.random() < Config.REPLY_PROBABILITY
+            should_try_reply = random.random() < probs["reply_probability"]
 
         if should_try_reply:
             actions, errors = _attempt_reply(
                 tweet, page, rate_limiter, error_handler, content_engine,
                 search_keyword, tweet_text, intent, intent_label,
                 use_curiosity, feedback, reflection_summary,
+                reply_style_weights=probs["reply_style_weights"],
             )
             actions_taken += actions
             errors_in_cycle += errors
 
-        # FOLLOW (higher chance for high-intent users)
-        follow_chance = Config.FOLLOW_PROBABILITY
-        if intent == 3:
-            follow_chance = 0.60
-        elif intent == 2:
-            follow_chance = 0.30
-
-        if random.random() < follow_chance:
+        # FOLLOW — probability sourced from policy (reward-adjusted)
+        if random.random() < probs["follow_probability"]:
             actions, errors = _attempt_follow(
                 tweet, rate_limiter, error_handler, intent_label, feedback
             )
             actions_taken += actions
             errors_in_cycle += errors
 
-        # QUOTE TWEET (10% chance)
-        if random.random() < 0.10:
+        # QUOTE TWEET — probability sourced from policy
+        if random.random() < probs["quote_probability"]:
             actions, errors = _attempt_quote(
                 tweet, page, rate_limiter, error_handler, content_engine
             )

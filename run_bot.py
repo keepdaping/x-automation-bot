@@ -166,10 +166,24 @@ class BotController:
         if posting_time.tzinfo is None:
             posting_time = posting_time.replace(tzinfo=timezone.utc)
 
-        if (current_time >= posting_time
-                and Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC):
+        # Post if the scheduled time has passed AND we're still inside the allowed window.
+        # The second condition catches wake-up after a long sleep: if the bot was
+        # inactive when the random posting_time fired, it will post as soon as it wakes,
+        # as long as the end-of-window hasn't been reached yet.
+        inside_window = Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
+        if current_time >= posting_time and inside_window:
             log.info(f"📝 Time to post daily tweet ({current_time.strftime('%H:%M')} UTC)")
             self._post_daily_tweet()
+        elif current_time.hour >= Config.DAILY_TWEET_END_HOUR_UTC and not self.daily_posted_today:
+            # Window has fully closed without a post — reschedule for tomorrow.
+            # (daily_posted_today stays False so the summary log reflects the miss.)
+            log.warning(
+                f"[Daily] Posting window closed without a tweet today "
+                f"(target was {posting_time.strftime('%H:%M')} UTC). "
+                "Will retry tomorrow."
+            )
+            # Force a new posting_time to be generated on the next calendar day
+            self.last_generated_day = None
 
     def start(self):
         """Start the automation bot."""

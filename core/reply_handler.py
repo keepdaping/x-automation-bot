@@ -14,7 +14,8 @@ from config import Config
 
 def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
                    search_keyword, tweet_text, intent, intent_label,
-                   use_curiosity, feedback, reflection_summary=""):
+                   use_curiosity, feedback, reflection_summary="",
+                   reply_style_weights: dict = None):
     """Attempt to reply to a tweet. Returns (actions_taken, errors_in_cycle)"""
     actions_taken = 0
     errors_in_cycle = 0
@@ -24,9 +25,31 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
             should_reply, reason = should_reply_to_tweet_safe(tweet_text)
 
             if should_reply:
-                # --- Reply generation strategy ---
-                if use_curiosity and getattr(Config, "GROK_STYLE", True):
-                    # Grok-style: direct, truth-seeking, bypasses curiosity fluff
+                # --- Reply style selection via UCB1 Bandit ---
+                # Bandit chooses among all arms, but we constrain:
+                #   use_curiosity=False  → always "standard" (low intent, no curiosity reply)
+                #   use_curiosity=True   → bandit picks from all three styles
+                from core.bandit import get_reply_bandit
+                _bandit = get_reply_bandit()
+
+                if not use_curiosity:
+                    # Low/medium intent with no curiosity flag → standard only
+                    selected_style = "standard"
+                elif reply_style_weights:
+                    # PolicyEngine provided adjusted weights → weighted random
+                    # then let bandit record the selection for future learning
+                    import random as _random
+                    arms = list(reply_style_weights.keys())
+                    wts  = [reply_style_weights[a] for a in arms]
+                    selected_style = _random.choices(arms, weights=wts, k=1)[0]
+                else:
+                    # Pure bandit selection
+                    selected_style = _bandit.select()
+
+                log.debug(f"[ReplyHandler] Selected style: {selected_style} (use_curiosity={use_curiosity})")
+
+                # --- Execute selected style ---
+                if selected_style == "grok" and getattr(Config, "GROK_STYLE", True):
                     user_msg = f'Reply to this tweet from someone who needs real help:\n\n"{tweet_text}"'
                     if reflection_summary:
                         user_msg += f"\n\nContext about their pain: {reflection_summary}"
@@ -35,7 +58,6 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
                         system_prompt=Config.GROK_SYSTEM_INSTRUCTION,
                         user_message=user_msg,
                     )
-                    # Moderation guard — Grok path skips content_engine so validate inline
                     from content.content_moderator import ContentModerator
                     _grok_valid = (
                         generated_text
@@ -54,7 +76,7 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
                         log.warning("Grok reply failed moderation — falling back to curiosity")
                         result = content_engine.generate_curiosity_reply(tweet_text)
                         reply_type = "curiosity"
-                elif use_curiosity:
+                elif selected_style == "curiosity":
                     result = content_engine.generate_curiosity_reply(tweet_text)
                     reply_type = "curiosity"
                 else:

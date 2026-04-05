@@ -40,32 +40,32 @@ _last_reflect_date: Optional[date] = None
 
 def select_search_phrase(exclude: str = None) -> str:
     """
-    Pick a search phrase weighted by past 7-day performance.
-    Phrases that found more tweets get picked more often.
-    New/untested phrases get weight=2.0 so they still get tried.
-    Falls back to SEARCH_KEYWORDS + INTENT_KEYWORDS for backward compat.
+    Pick a search phrase using the UCB1 bandit (conversion-yield weighted).
+
+    The bandit:
+      - Explores new/untried phrases first (cold start)
+      - Uses UCB1 to balance exploitation of high-yield phrases vs exploration
+      - Applies a 20% epsilon floor so no phrase is ever permanently abandoned
+      - Is updated daily by the learning loop with conversion_yield rewards
+
+    Falls back to random choice if bandit fails.
     """
+    from core.bandit import get_phrase_bandit
+
     phrases = getattr(Config, "SEARCH_PHRASES", None) or (
         getattr(Config, "SEARCH_KEYWORDS", []) + getattr(Config, "INTENT_KEYWORDS", [])
     )
     if not phrases:
         return random.choice(["AI tools for business", "need more clients", "building in public"])
 
-    try:
-        stats = get_phrase_stats(days=7)
-    except Exception:
-        stats = {}
-
     candidates = [p for p in phrases if p != exclude] or phrases
-    weights = []
-    for phrase in candidates:
-        stat = stats.get(phrase)
-        if stat and stat["searches"] > 0:
-            weights.append(max(0.5, stat["avg_tweets_found"]))
-        else:
-            weights.append(2.0)  # Untested phrases get a fair chance
 
-    return random.choices(candidates, weights=weights, k=1)[0]
+    try:
+        bandit = get_phrase_bandit(candidates)
+        return bandit.select()
+    except Exception as e:
+        log.warning(f"Phrase bandit failed, falling back to random: {e}")
+        return random.choice(candidates)
 
 
 def search_with_fallback(page, phrase: str):
@@ -191,6 +191,15 @@ def run_engagement(page, config=None, keyword=None, feedback_tracker=None):
         if total_remaining == 0:
             log.info("❌ Daily limits reached - skipping cycle")
             return False
+
+        # Occasionally check past reply outcomes (browser-based, main thread)
+        # ~15% of cycles to keep detection risk low
+        if random.random() < 0.15:
+            try:
+                from core.outcome_updater import get_outcome_updater
+                get_outcome_updater().check_pending_with_page(page, limit=3)
+            except Exception as e:
+                log.debug(f"Outcome check skipped: {e}")
 
         # Occasionally browse timeline (human behavior)
         if random.random() < 0.25:

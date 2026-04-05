@@ -69,11 +69,15 @@ def _unfollow_user_by_profile(page, username: str, timeout=10000) -> bool:
         page.goto(f"https://x.com/{username}", wait_until="domcontentloaded", timeout=timeout)
         time.sleep(2)
         
-        # Look for "Following" button (indicates we follow them)
-        following_btn = page.locator("[data-testid='placeholderHashtagClick']").first
-        if not following_btn:
-            following_btn = page.locator("div[role='button']:has-text('Following')").first
-        
+        # Look for "Following" button (indicates we follow them).
+        # X renders the button as data-testid="userActions" containing text "Following",
+        # or as a standalone role=button with that label.  Try both selectors.
+        following_btn = page.locator(
+            "[data-testid='userActions'] div[role='button']:has-text('Following'), "
+            "div[data-testid='placeholderFollowButton']:has-text('Following'), "
+            "div[role='button']:has-text('Following')"
+        ).first
+
         if not following_btn or not following_btn.is_visible(timeout=3000):
             log.debug(f"@{username}: not following or button not found")
             return False
