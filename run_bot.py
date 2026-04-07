@@ -26,7 +26,7 @@ from core.error_handler import init_error_handler
 from core.session_manager import init_session_manager
 from core.scheduler import start_scheduler  # NEW: import scheduler
 from config import Config
-from database import init_db, count_posts_today, get_last_daily_post_date, has_posted_today, is_duplicate, save_post
+from database import init_db, count_posts_today, count_daily_posts_today, get_last_daily_post_date, has_posted_today, is_duplicate, save_post
 from logger_setup import log
 from actions.tweet import post_tweet
 from content.engine import get_content_engine
@@ -91,10 +91,30 @@ class BotController:
         return topic
 
     def _post_daily_tweet(self):
-        """Post one original tweet per day."""
+        """Post one original tweet per day.
+
+        Guard order (must ALL pass before the browser is touched):
+          1. Hard DB COUNT — authoritative, restart-proof, timezone-proof.
+          2. In-memory flag  — fast short-circuit within a running session.
+          3. Soft has_posted_today() — date-level sanity check.
+        The in-memory flag is set BEFORE save_post() so a save failure never
+        allows a second post.
+        """
         try:
+            # ── Guard 1: hard DB gate (COUNT) ─────────────────────────────────
+            if count_daily_posts_today() >= 1:
+                log.info("Daily tweet already posted today (DB confirmed) - skipping")
+                self.daily_posted_today = True
+                return
+
+            # ── Guard 2: in-memory flag ───────────────────────────────────────
+            if self.daily_posted_today:
+                log.info("Daily tweet already posted today (in-memory) - skipping")
+                return
+
+            # ── Guard 3: soft date check ──────────────────────────────────────
             if has_posted_today():
-                log.info("Daily tweet already posted today - skipping")
+                log.info("Daily tweet already posted today (date check) - skipping")
                 self.daily_posted_today = True
                 return
 
@@ -114,10 +134,15 @@ class BotController:
             success = post_tweet(self.page, tweet_text)
 
             if success:
+                # Set the in-memory lock BEFORE save_post so that even if save
+                # raises, this session will not attempt another post today.
+                self.daily_posted_today = True
                 now = datetime.now(timezone.utc)
                 pillar = Config.get_content_pillar(now.timetuple().tm_yday)
-                save_post(tweet_text, None, topic or "daily", "daily", 0.0, pillar=pillar["name"])
-                self.daily_posted_today = True
+                try:
+                    save_post(tweet_text, None, topic or "daily", "daily", 0.0, pillar=pillar["name"])
+                except Exception as save_err:
+                    log.error(f"Daily tweet posted on X but DB save failed: {save_err}")
                 log.info(f"✅ Daily tweet posted [{pillar['name']}]: {tweet_text}")
             else:
                 log.error("Daily tweet posting failed")
@@ -145,20 +170,34 @@ class BotController:
         if not Config.DAILY_TWEET_ENABLED:
             return
 
-        # Reset flag on new day
+        # ── New day: reset in-memory state ───────────────────────────────────
         if self.last_daily_post_date != current_day:
             self.daily_posted_today = False
             self.last_daily_post_date = current_day
+            self._missed_window_today = False  # reset missed-window flag too
 
-        # Generate posting time for today
+        # ── Fast path: already confirmed posted this session ─────────────────
+        if self.daily_posted_today:
+            return
+
+        # ── Hard DB gate (catches restarts where in-memory flag was lost) ────
+        if count_daily_posts_today() >= 1:
+            self.daily_posted_today = True   # sync memory with DB truth
+            return
+
+        # ── Soft date check (extra safety layer) ─────────────────────────────
+        if has_posted_today():
+            self.daily_posted_today = True
+            return
+
+        # ── Window already missed this day → do nothing until tomorrow ───────
+        if getattr(self, "_missed_window_today", False):
+            return
+
+        # ── Generate a posting time for today (once per calendar day) ────────
         if self.last_generated_day != current_day:
             self._generate_daily_posting_time(current_day)
 
-        # Already posted?
-        if self.daily_posted_today or has_posted_today():
-            return
-
-        # Not yet time?
         if self.daily_posting_time is None:
             return
 
@@ -166,24 +205,24 @@ class BotController:
         if posting_time.tzinfo is None:
             posting_time = posting_time.replace(tzinfo=timezone.utc)
 
-        # Post if the scheduled time has passed AND we're still inside the allowed window.
-        # The second condition catches wake-up after a long sleep: if the bot was
-        # inactive when the random posting_time fired, it will post as soon as it wakes,
-        # as long as the end-of-window hasn't been reached yet.
         inside_window = Config.DAILY_TWEET_START_HOUR_UTC <= current_time.hour < Config.DAILY_TWEET_END_HOUR_UTC
+
         if current_time >= posting_time and inside_window:
+            # Time reached and window open — attempt exactly once.
+            # _post_daily_tweet() sets self.daily_posted_today = True on success.
             log.info(f"📝 Time to post daily tweet ({current_time.strftime('%H:%M')} UTC)")
             self._post_daily_tweet()
-        elif current_time.hour >= Config.DAILY_TWEET_END_HOUR_UTC and not self.daily_posted_today:
-            # Window has fully closed without a post — reschedule for tomorrow.
-            # (daily_posted_today stays False so the summary log reflects the miss.)
+
+        elif current_time.hour >= Config.DAILY_TWEET_END_HOUR_UTC:
+            # Window closed without a post — record the miss and stop retrying
+            # for today.  DO NOT reset last_generated_day here; that caused an
+            # infinite regeneration loop every cycle.
             log.warning(
                 f"[Daily] Posting window closed without a tweet today "
                 f"(target was {posting_time.strftime('%H:%M')} UTC). "
                 "Will retry tomorrow."
             )
-            # Force a new posting_time to be generated on the next calendar day
-            self.last_generated_day = None
+            self._missed_window_today = True
 
     def start(self):
         """Start the automation bot."""

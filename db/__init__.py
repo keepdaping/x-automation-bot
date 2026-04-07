@@ -5,7 +5,7 @@ after database.py is replaced with `from db import ...`.
 
 Import map:
   db.schema      → init_db
-  db.posts       → is_duplicate, save_post, count_posts_today,
+  db.posts       → is_duplicate, save_post, count_posts_today, count_daily_posts_today,
                    get_last_daily_post_date, has_posted_today
   db.interactions → log_engagement, get_reply_outcomes
   db.follows     → save_follow, get_stale_follows, mark_unfollowed, get_follow_stats
@@ -21,6 +21,7 @@ from db.posts import (
     is_duplicate,
     save_post,
     count_posts_today,
+    count_daily_posts_today,
     get_last_daily_post_date,
     has_posted_today,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "is_duplicate",
     "save_post",
     "count_posts_today",
+    "count_daily_posts_today",
     "get_last_daily_post_date",
     "has_posted_today",
     "log_engagement",

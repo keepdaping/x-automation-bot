@@ -44,11 +44,11 @@ def count_posts_today() -> int:
 def get_last_daily_post_date() -> date | None:
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    # Use SQLite's built-in UTC conversion so the comparison is timezone-consistent.
-    # CURRENT_TIMESTAMP is stored as local time by SQLite; strftime with 'utc' modifier
-    # normalises it regardless of server timezone.
+    # SQLite CURRENT_TIMESTAMP is always UTC — no modifier needed.
+    # Do NOT apply the 'utc' modifier: it would treat the already-UTC value as local
+    # time and subtract the timezone offset a second time, returning the wrong date.
     cur.execute(
-        "SELECT strftime('%Y-%m-%d', created_at, 'utc') FROM posts "
+        "SELECT strftime('%Y-%m-%d', created_at) FROM posts "
         "WHERE format = 'daily' ORDER BY created_at DESC LIMIT 1"
     )
     row = cur.fetchone()
@@ -66,3 +66,21 @@ def has_posted_today() -> bool:
     if not last_date:
         return False
     return last_date == datetime.now(timezone.utc).date()
+
+
+def count_daily_posts_today() -> int:
+    """Hard DB gate: count 'daily' format posts for the current UTC calendar day.
+
+    Uses SQLite's date('now') which is always UTC — independent of server timezone
+    and of any in-memory flag state.  Returns ≥1 if a daily tweet was already saved
+    today, 0 otherwise.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM posts "
+        "WHERE format = 'daily' AND date(created_at) = date('now')"
+    )
+    count = cur.fetchone()[0]
+    conn.close()
+    return count
