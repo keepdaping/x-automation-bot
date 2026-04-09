@@ -104,22 +104,44 @@ class UCB1Bandit:
 
     # ─── Core: select ─────────────────────────────────────────────────────
 
+    def _all_rewards_zero(self, state: dict) -> bool:
+        """True when every tried arm has accumulated no positive reward."""
+        tried = [s for s in state.values() if s["trials"] > 0]
+        if not tried:
+            return True
+        return all(s["total_reward"] <= 0.0 for s in tried)
+
     def select(self) -> str:
         """
         Return the arm to try next.
 
         Order of decisions:
           1. Epsilon-exploration: random arm with prob=epsilon (anti-exploitation lock-in)
+             Epsilon is boosted to 0.4 when all rewards are zero to escape exploitation
+             of a single "least-bad" arm and generate diverse signal for learning.
           2. Cold start: untried arms get priority (avoids starving new options)
           3. UCB1: highest upper confidence bound wins
         """
+        state = self._load()
+
+        # Compute effective epsilon: boost when there are no positive signals yet.
+        # Without this, 85% of selections are UCB1-optimal (lowest tried arm) which
+        # means the same arm is selected repeatedly → no style diversity → no learning.
+        if self._all_rewards_zero(state):
+            effective_epsilon = max(self.epsilon, 0.40)
+            log.debug(
+                f"[Bandit:{self.namespace}] all-zero rewards — "
+                f"boosting ε {self.epsilon:.2f} → {effective_epsilon:.2f}"
+            )
+        else:
+            effective_epsilon = self.epsilon
+
         # 1. Epsilon floor — guaranteed minimum exploration
-        if random.random() < self.epsilon:
+        if random.random() < effective_epsilon:
             chosen = random.choice(self.arms)
             log.debug(f"[Bandit:{self.namespace}] ε-explore → {chosen}")
             return chosen
 
-        state = self._load()
         total_trials = sum(s["trials"] for s in state.values())
 
         # 2. Cold start — try untested arms before exploiting

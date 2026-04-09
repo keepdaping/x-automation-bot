@@ -83,7 +83,15 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler,
             use_curiosity = True
             log.info(f"🎯 HIGH INTENT: {tweet_text[:60]}...")
         else:
-            should_try_reply = random.random() < probs["reply_probability"]
+            roll = random.random()
+            should_try_reply = roll < probs["reply_probability"]
+            log.info(
+                f"[Decision] intent={intent_label} | "
+                f"reply_prob={probs['reply_probability']:.3f} | "
+                f"roll={roll:.3f} | "
+                f"reply={'YES' if should_try_reply else 'NO'} | "
+                f"follow_prob={probs['follow_probability']:.3f}"
+            )
 
         if should_try_reply:
             actions, errors = _attempt_reply(
