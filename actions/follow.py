@@ -39,8 +39,15 @@ def follow_user(tweet, timeout=5000):
     """
     Follow a user from a tweet element.
     Returns (success: bool, user_handle: str or None) for feedback tracking.
+
+    Two-phase design:
+      Phase 1 — browser action (click).  Any failure here → return (False, None).
+      Phase 2 — DB logging.  Runs in its own try/except so a save failure never
+                blocks the True return or masks the fact that the follow occurred.
     """
     user_handle = None
+
+    # ── Phase 1: browser action ───────────────────────────────────────────────
     try:
         follow_btn = tweet.locator(FOLLOW_BUTTON).first
 
@@ -59,23 +66,24 @@ def follow_user(tweet, timeout=5000):
         except Exception:
             follow_btn.click(timeout=timeout, force=True)
 
-        # Extract user info for tracking.
-        # Fall back to a timestamp-based sentinel so the follow is always
-        # persisted even when the DOM link regex fails — prevents silent data loss.
+    except Exception as e:
+        log.warning(f"Failed to follow (browser action): {e}")
+        return False, user_handle
+
+    # ── Phase 2: DB logging (isolated — never prevents True return) ───────────
+    try:
         user_info = _extract_user_info(tweet)
         user_handle = user_info["username"]
 
         follow_id = user_info["user_id"] or user_info["username"]
         if not follow_id:
-            # Last-resort: record with a placeholder so rate limiter + DB stay in sync
-            import time as _time
-            follow_id = f"unknown_{int(_time.time())}"
+            follow_id = f"unknown_{int(time.time())}"
+
         save_follow(follow_id, user_info["username"] or "")
-        log.debug(f"Tracked follow: @{user_info['username'] or follow_id}")
+        log.info(f"FOLLOW SAVED TO DB: @{user_info['username'] or follow_id}")
 
-        random_delay()
-        return True, user_handle
+    except Exception as save_err:
+        log.error(f"Follow executed on X but DB save failed: {save_err}")
 
-    except Exception as e:
-        log.warning(f"Failed to follow: {e}")
-        return False, user_handle
+    random_delay()
+    return True, user_handle

@@ -137,13 +137,25 @@ class BotController:
                 # Set the in-memory lock BEFORE save_post so that even if save
                 # raises, this session will not attempt another post today.
                 self.daily_posted_today = True
-                now = datetime.now(timezone.utc)
-                pillar = Config.get_content_pillar(now.timetuple().tm_yday)
+
+                # Resolve pillar name in its own scope so a failure here cannot
+                # skip the save_post() call below.
                 try:
-                    save_post(tweet_text, None, topic or "daily", "daily", 0.0, pillar=pillar["name"])
+                    now = datetime.now(timezone.utc)
+                    pillar_name = Config.get_content_pillar(now.timetuple().tm_yday)["name"]
+                except Exception as pillar_err:
+                    log.warning(f"Could not resolve content pillar: {pillar_err} — using 'general'")
+                    pillar_name = "general"
+
+                # DB logging is isolated: a save failure is reported but the
+                # function still returns cleanly (tweet is already on X).
+                try:
+                    save_post(tweet_text, None, topic or "daily", "daily", 0.0, pillar=pillar_name)
+                    log.info("TWEET SAVED TO DB")
                 except Exception as save_err:
                     log.error(f"Daily tweet posted on X but DB save failed: {save_err}")
-                log.info(f"✅ Daily tweet posted [{pillar['name']}]: {tweet_text}")
+
+                log.info(f"✅ Daily tweet posted [{pillar_name}]: {tweet_text}")
             else:
                 log.error("Daily tweet posting failed")
 
