@@ -28,7 +28,15 @@ class Config:
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
     # ========== SEARCH & ENGAGEMENT ==========
-    SEARCH_KEYWORDS = [k.strip() for k in os.getenv("SEARCH_KEYWORDS", "AI,python,automation,tech,startup").split(",")]
+    # Default keywords are kept as fallback only — SEARCH_PHRASES and INTENT_KEYWORDS
+    # drive the actual search selection (see select_search_phrase in engagement.py).
+    SEARCH_KEYWORDS = [k.strip() for k in os.getenv(
+        "SEARCH_KEYWORDS",
+        "struggling to get clients,need help with automation,"
+        "no engagement on posts,how to get clients,"
+        "no sales,looking for clients,automation not working,"
+        "AI tools for business,freelancing is hard,need more leads"
+    ).split(",")]
 
     # SEARCH_PHRASES: 2-5 word phrases that X search reliably returns results for.
     # Backward compatible: falls back to SEARCH_KEYWORDS + INTENT_KEYWORDS if not set.
@@ -96,12 +104,28 @@ class Config:
     ).split(",") if h.strip()]
 
     # ========== INTENT KEYWORDS (pain-based lead discovery) ==========
+    # These are the primary search phrases (75% of cycles via select_search_phrase).
+    # Each phrase is 3-7 words targeting explicit frustration or need expression
+    # so that X search results are pre-filtered to high-intent tweets.
     INTENT_KEYWORDS = [k.strip() for k in os.getenv(
         "INTENT_KEYWORDS",
-        "no engagement,need clients,struggling to grow,"
-        "nobody sees my posts,how to get followers,"
-        "freelance is hard,no one is buying,need more leads,"
-        "not getting clients,how to monetize,zero sales"
+        # Client / revenue pain
+        "struggling to get clients,need more clients,can't find clients,"
+        "how to get clients,looking for clients,not getting clients,"
+        "no one is buying,zero sales,no sales,how to monetize,"
+        # Engagement / reach pain
+        "no engagement on posts,nobody sees my content,getting zero impressions,"
+        "my tweets get no reach,struggling to grow,nobody sees my posts,"
+        "tired of no engagement,no views no impressions,"
+        # Automation / tool pain
+        "need help with automation,automation not working,my automation broke,"
+        "workflow not working,need to automate my workflow,"
+        # Freelance / business pain
+        "freelancing is so hard,freelance is hard,cant find clients,"
+        "not making money freelancing,side hustle not working,"
+        # Growth / general pain
+        "how to get followers,need more leads,not getting results,"
+        "trying to grow my account,what am i doing wrong"
     ).split(",") if k.strip()]
 
     # ========== RATE LIMITS - DAILY ==========

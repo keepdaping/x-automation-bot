@@ -19,9 +19,18 @@ from config import Config
 
 
 def _process_single_tweet(tweet, page, rate_limiter, error_handler,
-                           content_engine, search_keyword, feedback):
+                           content_engine, search_keyword, feedback,
+                           force_reply: bool = False):
     """
     Process a single tweet for engagement actions.
+
+    Parameters
+    ----------
+    force_reply : bool
+        When True, bypass the probability roll for replying on LOW-intent tweets.
+        Used exclusively by the forced-fallback path in run_engagement() when the
+        entire cycle would otherwise produce zero actions.
+
     Returns (actions_taken, errors_in_cycle, was_high_intent)
     """
     actions_taken = 0
@@ -82,6 +91,11 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler,
             should_try_reply = True          # always engage high-intent
             use_curiosity = True
             log.info(f"🎯 HIGH INTENT: {tweet_text[:60]}...")
+        elif force_reply:
+            # Forced-fallback path: bypass probability roll.
+            # Only called when the whole cycle would otherwise be silent.
+            should_try_reply = True
+            log.info(f"[Fallback] Forcing reply (intent={intent_label}): {tweet_text[:60]}...")
         else:
             roll = random.random()
             should_try_reply = roll < probs["reply_probability"]

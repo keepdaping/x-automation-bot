@@ -40,29 +40,45 @@ _last_reflect_date: Optional[date] = None
 
 def select_search_phrase(exclude: str = None) -> str:
     """
-    Pick a search phrase using the UCB1 bandit (conversion-yield weighted).
+    Pick a search phrase for the next search cycle.
 
-    The bandit:
-      - Explores new/untried phrases first (cold start)
-      - Uses UCB1 to balance exploitation of high-yield phrases vs exploration
-      - Applies a 20% epsilon floor so no phrase is ever permanently abandoned
-      - Is updated daily by the learning loop with conversion_yield rewards
+    Selection strategy (two-tier):
+      75% of cycles → pick directly from INTENT_KEYWORDS (explicit pain-signal
+                      phrases).  These target tweets whose text already contains
+                      frustration/struggle language, so matched tweets score HIGH
+                      or MEDIUM intent far more often than generic keywords do.
+      25% of cycles → use the UCB1 bandit over the full SEARCH_PHRASES pool.
+                      The bandit learns which broader phrases yield the best
+                      conversion, and the 25% allocation prevents intent keywords
+                      from completely starving the broader phrase pool.
 
-    Falls back to random choice if bandit fails.
+    Note: `_select_search_keyword()` below is legacy code that was never wired
+    into the live path.  This function is the active selection entry point.
     """
     from core.bandit import get_phrase_bandit
 
+    intent_keywords = [k for k in getattr(Config, "INTENT_KEYWORDS", []) if k != exclude]
+
+    # ── 75% path: pain-signal phrase (intent-targeted) ────────────────────
+    if intent_keywords and random.random() < 0.75:
+        chosen = random.choice(intent_keywords)
+        log.info(f"Search phrase (intent-targeted, 75% path): '{chosen}'")
+        return chosen
+
+    # ── 25% path: UCB1 bandit over full phrase pool ───────────────────────
     phrases = getattr(Config, "SEARCH_PHRASES", None) or (
         getattr(Config, "SEARCH_KEYWORDS", []) + getattr(Config, "INTENT_KEYWORDS", [])
     )
     if not phrases:
-        return random.choice(["AI tools for business", "need more clients", "building in public"])
+        return random.choice(["need more clients", "automation not working", "building in public"])
 
     candidates = [p for p in phrases if p != exclude] or phrases
 
     try:
         bandit = get_phrase_bandit(candidates)
-        return bandit.select()
+        chosen = bandit.select()
+        log.info(f"Search phrase (bandit, 25% path): '{chosen}'")
+        return chosen
     except Exception as e:
         log.warning(f"Phrase bandit failed, falling back to random: {e}")
         return random.choice(candidates)
@@ -238,9 +254,12 @@ def run_engagement(page, config=None, keyword=None, feedback_tracker=None):
         actions_taken = 0
         errors_in_cycle = 0
         high_intent_found = 0
+        first_tweet = None   # kept for forced-fallback reply
 
         for idx, tweet in enumerate(tweets, 1):
             log.debug(f"\n--- Processing tweet {idx}/{len(tweets)} ---")
+            if first_tweet is None:
+                first_tweet = tweet   # save element before any navigation
             actions, errors, was_high_intent = _process_single_tweet(
                 tweet, page, rate_limiter, error_handler,
                 content_engine, search_keyword, feedback,
@@ -249,6 +268,29 @@ def run_engagement(page, config=None, keyword=None, feedback_tracker=None):
             errors_in_cycle += errors
             if was_high_intent:
                 high_intent_found += 1
+
+        # ── Forced-fallback reply ──────────────────────────────────────────
+        # If the entire cycle produced zero actions (all tweets scored LOW and
+        # the probability rolls came up negative), attempt one guaranteed reply
+        # on the first tweet to ensure the bot never goes completely silent.
+        # This is deliberately capped at 1 so it cannot spike rate limits.
+        if actions_taken == 0 and first_tweet is not None:
+            can_reply, _ = rate_limiter.can_perform_action("reply")
+            if can_reply:
+                log.info(
+                    "[Fallback] All tweets LOW intent and no actions taken — "
+                    "forcing 1 reply on first tweet"
+                )
+                try:
+                    f_actions, f_errors, _ = _process_single_tweet(
+                        first_tweet, page, rate_limiter, error_handler,
+                        content_engine, search_keyword, feedback,
+                        force_reply=True,
+                    )
+                    actions_taken += f_actions
+                    errors_in_cycle += f_errors
+                except Exception as fb_err:
+                    log.warning(f"[Fallback] Forced reply failed: {fb_err}")
 
         try:
             log_search(search_keyword, len(tweets), actions_taken, high_intent_found)
