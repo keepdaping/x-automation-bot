@@ -108,12 +108,14 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler,
             )
 
         if should_try_reply:
+            log.info(f"→ Calling _attempt_reply() (intent={intent_label}, style_weights={probs['reply_style_weights']})")
             actions, errors = _attempt_reply(
                 tweet, page, rate_limiter, error_handler, content_engine,
                 search_keyword, tweet_text, intent, intent_label,
                 use_curiosity, feedback, reflection_summary,
                 reply_style_weights=probs["reply_style_weights"],
             )
+            log.info(f"→ _attempt_reply() returned: actions={actions}, errors={errors}")
             actions_taken += actions
             errors_in_cycle += errors
 
