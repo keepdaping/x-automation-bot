@@ -12,7 +12,7 @@ from logger_setup import log
 class LLMIntentScorer:
     def __init__(self):
         self.client = Anthropic(api_key=Config.ANTHROPIC_API_KEY)
-        self.model = "claude-3-5-haiku-latest"  # cheapest & fast
+        self.model = "claude-haiku-4-5-20251001"  # cheapest & fast
 
     def score(self, tweet_text: str, bio: str = "", recent_tweets: list = None) -> dict:
         """
@@ -48,19 +48,15 @@ Output ONLY valid JSON:
   "negation_check": true/false
 }}"""
 
-        try:
-            resp = self.client.messages.create(
-                model=self.model,
-                max_tokens=300,
-                temperature=0,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            result = json.loads(resp.content[0].text.strip())
-            log.debug(f"LLM intent: {result['level']} | {result['reason']}")
-            return result
-        except Exception as e:
-            log.warning(f"LLM intent failed, falling back to score=1: {e}")
-            return {"intent_score": 1, "level": "LOW", "pain_points": [], "reason": "LLM error", "negation_check": False}
+        resp = self.client.messages.create(
+            model=self.model,
+            max_tokens=300,
+            temperature=0,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        result = json.loads(resp.content[0].text.strip())
+        log.debug(f"LLM intent: {result['level']} | {result['reason']}")
+        return result
 
 # Singleton
 _llm_scorer = None

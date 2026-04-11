@@ -21,8 +21,12 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
     errors_in_cycle = 0
 
     if rate_limiter.can_perform_action("reply")[0]:
+        log.info("Attempting reply...")
         try:
             should_reply, reason = should_reply_to_tweet_safe(tweet_text)
+
+            if not should_reply:
+                log.info(f"Reply blocked by language filter: {reason}")
 
             if should_reply:
                 # --- Reply style selection via UCB1 Bandit ---
@@ -114,8 +118,12 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
                             log.warning(f"Feedback log failed: {e}")
 
                     else:
+                        log.warning("Reply failed: reply_tweet() returned False")
                         rate_limiter.record_action("reply", success=False)
+                else:
+                    log.warning("Reply failed: generated reply text was empty")
         except Exception as e:
+            log.warning(f"Reply failed: {e}")
             should_retry, wait_seconds = error_handler.handle_error(e, "reply_tweet")
             rate_limiter.record_action("reply", success=False)
             errors_in_cycle += 1

@@ -43,12 +43,16 @@ class LanguageHandler:
     @staticmethod
     def should_reply_to_tweet(text: str) -> Tuple[bool, Optional[str]]:
         lang_code, confidence = LanguageHandler.detect_language(text)
-        if lang_code == 'en' and confidence >= 0.70:
+        # Allow English at any confidence — langdetect is unreliable on short/
+        # hashtag-heavy text and would silently block valid English tweets.
+        if lang_code == 'en':
             return True, None
-        if lang_code == 'en' and confidence < 0.70:
-            return False, f"Low English confidence: {confidence:.2f}"
-        lang_name = LanguageHandler.LANGUAGE_NAMES.get(lang_code, lang_code.upper())
-        return False, f"Non-English: {lang_name}"
+        # Non-English: only block if confidence is high enough to be trustworthy
+        if confidence >= 0.80:
+            lang_name = LanguageHandler.LANGUAGE_NAMES.get(lang_code, lang_code.upper())
+            return False, f"Non-English: {lang_name} ({confidence:.2f})"
+        # Low-confidence non-English → allow through (better to reply than miss)
+        return True, None
 
 
 def should_reply_to_tweet_safe(tweet_text: str) -> Tuple[bool, Optional[str]]:
