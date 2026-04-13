@@ -23,7 +23,7 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
     # ── Rate limiter check (logged, not silent) ────────────────────────────
     can_reply, limit_reason = rate_limiter.can_perform_action("reply")
     if not can_reply:
-        log.info(f"→ Reply skipped: rate limiter — {limit_reason}")
+        log.warning(f"[ReplyHandler] SKIP — rate limiter: {limit_reason}")
         return actions_taken, errors_in_cycle
 
     log.info("→ Attempting reply...")
@@ -31,7 +31,7 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
         # ── Language filter ────────────────────────────────────────────────
         should_reply, reason = should_reply_to_tweet_safe(tweet_text)
         if not should_reply:
-            log.info(f"→ Reply blocked by language filter: {reason}")
+            log.warning(f"[ReplyHandler] SKIP — language filter: {reason}")
             return actions_taken, errors_in_cycle
 
         # ── Reply style selection via UCB1 Bandit ──────────────────────────
@@ -63,6 +63,7 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
                 user_message=user_msg,
             )
             from content.content_moderator import ContentModerator
+            generated_text = ContentModerator.sanitize_output(generated_text)
             _grok_valid = (
                 generated_text
                 and len(generated_text.strip()) >= 8
@@ -86,7 +87,7 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
         reply = result.text
 
         if not reply or len(reply) == 0:
-            log.warning(f"→ Reply FAILED: generated reply text was empty (source={result.source}, error={result.error})")
+            log.warning(f"[ReplyHandler] FAIL — empty reply text (source={result.source}, error={result.error})")
             return actions_taken, errors_in_cycle
 
         log.debug(f"→ Generated reply ({len(reply)} chars, style={reply_type}): {reply[:80]}")
@@ -100,16 +101,42 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
             log.info(
                 f"✓ Replied [{reply_type}] "
                 f"(intent={intent_label}, quality={result.quality_score:.2f}) "
-                f"| Reply ID: {reply_id}"
+                f"| Reply ID: {reply_id or 'unknown'}"
             )
 
             # Feedback logged here (single source of truth)
             try:
-                tweet_id = tweet.get_attribute("data-testid-tweet-id") or ""
+                # Extract tweet ID from the article element's link, same strategy
+                # as reply_id extraction in reply_tweet()
+                import re as _re
+                tweet_id = ""
+                try:
+                    link = tweet.locator("a[href*='/status/']").first
+                    if link.count() > 0:
+                        href = link.get_attribute("href") or ""
+                        m = _re.search(r"/status/(\d+)", href)
+                        if m:
+                            tweet_id = m.group(1)
+                except Exception:
+                    pass
+
+                # Extract user handle from the tweet's author link
+                user_handle = ""
+                try:
+                    author_link = tweet.locator("a[role='link'][href^='/']").first
+                    if author_link.count() > 0:
+                        href = author_link.get_attribute("href") or ""
+                        # href is like /username — strip the leading slash
+                        candidate = href.lstrip("/").split("/")[0]
+                        if candidate and candidate not in ("i", "home", "explore"):
+                            user_handle = candidate
+                except Exception:
+                    pass
+
                 feedback.log_reply(
                     tweet_id=tweet_id,
                     reply_id=reply_id or "",
-                    user_handle="",
+                    user_handle=user_handle,
                     tweet_text=tweet_text,
                     reply_text=reply,
                     intent=intent_label,
@@ -119,7 +146,7 @@ def _attempt_reply(tweet, page, rate_limiter, error_handler, content_engine,
             except Exception as e:
                 log.warning(f"Feedback log failed: {e}")
         else:
-            log.warning("→ Reply FAILED: reply_tweet() returned False")
+            log.warning("[ReplyHandler] FAIL — reply_tweet() returned False")
             rate_limiter.record_action("reply", success=False)
 
     except Exception as e:

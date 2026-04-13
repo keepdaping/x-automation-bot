@@ -94,8 +94,32 @@ class ContentModerator:
     MAX_LENGTH = 280
 
     @classmethod
-    def validate(cls, text: str) -> Tuple[bool, Optional[str]]:
-        """Basic content validation — returns (is_valid, error_message)"""
+    def sanitize_output(cls, text: str) -> str:
+        """
+        Strip LLM-generated violations from output before full validation.
+
+        Removes @mentions and #hashtags in-line rather than rejecting the whole
+        reply. This recovers otherwise good LLM output that leaked a mention/tag.
+        Other banned patterns (URLs, sales phrases, etc.) still require rejection.
+        """
+        if not text:
+            return text
+        # Strip @mentions and #hashtags — the two most common LLM slip-ups
+        text = re.sub(r"@\w+", "", text)
+        text = re.sub(r"#\w+", "", text)
+        # Collapse any double-spaces left behind
+        text = re.sub(r" {2,}", " ", text).strip()
+        return text
+
+    @classmethod
+    def validate(cls, text: str, is_input: bool = False) -> Tuple[bool, Optional[str]]:
+        """
+        Basic content validation — returns (is_valid, error_message).
+
+        is_input=True: called on raw tweet text we READ (relaxes #/@ check since
+                       tweets naturally contain mentions and hashtags).
+        is_input=False (default): called on text we are about to POST.
+        """
         if not text or not isinstance(text, str):
             return False, "Reply is empty"
 
@@ -106,8 +130,10 @@ class ContentModerator:
         if len(text) > cls.MAX_LENGTH:
             return False, f"Reply too long ({len(text)} > {cls.MAX_LENGTH} chars)"
 
-        # Check banned patterns
+        # Check banned patterns — skip the @/# check for INPUT tweet text
         for pattern in cls.BANNED_PATTERNS:
+            if is_input and pattern == r"[#@]\w+":
+                continue
             if re.search(pattern, text, re.IGNORECASE):
                 logger.debug(f"Validation failed: banned pattern {pattern}")
                 return False, f"Contains banned pattern: {pattern}"

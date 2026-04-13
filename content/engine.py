@@ -76,8 +76,8 @@ class ContentEngine:
             if not cached:
                 self.metrics["cache_misses"] += 1
 
-            # Step 2: Validate input tweet
-            is_valid, error = self.moderator.validate(tweet_text)
+            # Step 2: Validate input tweet (relaxed — we're reading, not posting)
+            is_valid, error = self.moderator.validate(tweet_text, is_input=True)
             if not is_valid:
                 self.metrics["fallbacks"] += 1
                 return GenerationResult(text=self._get_fallback(), source="fallback", quality_score=0.3, error=f"Input validation: {error}")
@@ -91,10 +91,12 @@ class ContentEngine:
             logger.info(f"Generated reply in {gen_duration:.2f}s (model={gen_metrics.get('model')}, tokens={gen_metrics.get('tokens')})")
             self.metrics["generated"] += 1
 
-            # Step 4: Validate output
+            # Step 4: Sanitize then validate output
+            generated_text = self.moderator.sanitize_output(generated_text)
             is_valid, error = self.moderator.validate(generated_text)
             if not is_valid:
                 self.metrics["fallbacks"] += 1
+                logger.warning(f"Output failed validation after sanitize: {error} | text={generated_text[:80]}")
                 return GenerationResult(text=self._get_fallback(), source="fallback", quality_score=0.3, error=f"Output validation: {error}")
 
             if self.moderator.is_generic(generated_text):
@@ -261,9 +263,11 @@ class ContentEngine:
             gen_metrics = get_last_generation_metrics()
             logger.info(f"Curiosity reply in {gen_duration:.2f}s (model={gen_metrics.get('model')})")
 
-            # Validate
+            # Sanitize then validate
+            generated_text = self.moderator.sanitize_output(generated_text)
             is_valid, error = self.moderator.validate(generated_text)
             if not is_valid:
+                logger.warning(f"Curiosity reply failed validation after sanitize: {error}")
                 return self.generate_reply(tweet_text)
 
             quality_score = self.moderator.score_quality(generated_text)

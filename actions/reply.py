@@ -1,5 +1,6 @@
 """Reply to tweets with human-like typing."""
 
+import re
 import time
 from utils.human_behavior import random_delay, human_typing
 from utils.selectors import REPLY_BUTTON, REPLY_TEXTAREA
@@ -122,16 +123,37 @@ def reply_tweet(page, tweet, text, timeout=10000):
                 return False, None
 
         # Allow X to process the submission before we check for the reply ID
-        time.sleep(2.0)
+        time.sleep(2.5)
 
         # ── Step 6: Extract reply ID (best-effort) ─────────────────────────
+        # X does not expose tweet IDs via DOM attributes; extract from the URL
+        # of the last article link in the thread after submission.
         reply_id = None
         try:
-            your_reply = page.locator("article[data-testid='tweet']").last
-            if your_reply.count() > 0:
-                reply_id = your_reply.get_attribute("data-testid-tweet-id") or ""
-                if not reply_id:
-                    log.debug("Reply ID not found in attribute — tracking without it")
+            # Strategy 1: parse tweet links from the last article in the thread
+            articles = page.locator("article[data-testid='tweet']")
+            count = articles.count()
+            if count > 0:
+                last_article = articles.nth(count - 1)
+                # Look for a permalink link like /username/status/1234567890
+                link = last_article.locator("a[href*='/status/']").first
+                if link.count() > 0:
+                    href = link.get_attribute("href") or ""
+                    match = re.search(r"/status/(\d+)", href)
+                    if match:
+                        reply_id = match.group(1)
+
+            # Strategy 2: fall back to current page URL if it changed to a status URL
+            if not reply_id:
+                current_url = page.url
+                match = re.search(r"/status/(\d+)", current_url)
+                if match:
+                    reply_id = match.group(1)
+
+            if reply_id:
+                log.debug(f"Extracted reply_id: {reply_id}")
+            else:
+                log.debug("Reply ID not found — tracking without it")
         except Exception as e:
             log.debug(f"Failed to extract reply_id: {e}")
 

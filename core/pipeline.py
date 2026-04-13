@@ -7,7 +7,7 @@ import time
 
 from utils.tweet_metrics import get_tweet_metrics
 from utils.engagement_score import score_tweet
-from utils.tweet_text import get_tweet_text
+from utils.tweet_text import get_tweet_text, clean_tweet_text
 from utils.intent_scorer import score_intent, get_intent_label
 from utils.llm_intent_scorer import get_llm_intent_scorer
 from core.reply_handler import _attempt_reply
@@ -41,7 +41,10 @@ def _process_single_tweet(tweet, page, rate_limiter, error_handler,
     try:
         metrics = get_tweet_metrics(tweet)
         engagement_score = score_tweet(metrics)
-        tweet_text = get_tweet_text(tweet)
+        raw_tweet_text = get_tweet_text(tweet)
+        tweet_text = clean_tweet_text(raw_tweet_text)
+        if not tweet_text:
+            tweet_text = raw_tweet_text  # fallback to raw if cleaning strips everything
         intent = score_intent(tweet_text)
         intent_label = get_intent_label(intent)
         log.debug(f"Score: {engagement_score}, Intent: {intent_label}")
