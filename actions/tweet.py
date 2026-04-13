@@ -12,7 +12,9 @@ from logger_setup import log
 
 
 _TEXTAREA_SELECTOR  = '[data-testid="tweetTextarea_0"]'
-_SUBMIT_SELECTOR    = '[data-testid="tweetButton"]'
+# Scoped to the compose toolbar so we don't accidentally match the
+# always-enabled navbar "New post" button.
+_SUBMIT_SELECTOR    = '[data-testid="toolBar"] [data-testid="tweetButton"], [data-testid="tweetButton"]'
 _OVERLAY_SELECTOR   = '[data-testid="twc-cc-mask"]'
 
 
@@ -120,14 +122,22 @@ def _wait_for_enabled_submit(page, timeout_ms: int = 8000) -> bool:
 
     Returns True once enabled, False if it stays disabled past the deadline.
     """
+    # Prefer the toolbar-scoped button; fall back to the global one.
+    # This prevents matching the navbar "New post" button which is always enabled.
+    _candidates = [
+        '[data-testid="toolBar"] [data-testid="tweetButton"]',
+        'div[data-testid="tweetButtonInline"]',
+        '[data-testid="tweetButton"]',
+    ]
     deadline = time.time() + timeout_ms / 1000
     while time.time() < deadline:
-        btn = page.locator(_SUBMIT_SELECTOR).first
-        try:
-            if btn.count() > 0 and btn.is_visible() and btn.is_enabled():
-                return True
-        except Exception:
-            pass
+        for sel in _candidates:
+            btn = page.locator(sel).last
+            try:
+                if btn.count() > 0 and btn.is_visible() and btn.is_enabled():
+                    return True
+            except Exception:
+                pass
         time.sleep(0.3)
     return False
 
@@ -178,8 +188,25 @@ def post_tweet(page, text: str, timeout: int = 15000) -> bool:
                 log.error(f"Ctrl+Enter fallback failed: {ke}")
                 return False
         else:
-            # ── 5. Click submit ─────────────────────────────────────────────
-            btn = page.locator(_SUBMIT_SELECTOR).first
+            # ── 5. Click the enabled submit button ─────────────────────────
+            # Re-locate using scoped selectors (same priority as _wait_for_enabled_submit)
+            btn = None
+            for sel in [
+                '[data-testid="toolBar"] [data-testid="tweetButton"]',
+                'div[data-testid="tweetButtonInline"]',
+                '[data-testid="tweetButton"]',
+            ]:
+                candidate = page.locator(sel).last
+                try:
+                    if candidate.count() > 0 and candidate.is_visible() and candidate.is_enabled():
+                        btn = candidate
+                        break
+                except Exception:
+                    pass
+
+            if btn is None:
+                btn = page.locator('[data-testid="tweetButton"]').last
+
             try:
                 btn.click(timeout=5000)
                 log.info("→ Tweet submitted (tweetButton click)")
@@ -192,22 +219,62 @@ def post_tweet(page, text: str, timeout: int = 15000) -> bool:
                     log.error(f"Ctrl+Enter fallback failed: {ke}")
                     return False
 
-        time.sleep(2.0)
+        time.sleep(2.5)
 
-        # ── 6. Confirm success — textarea should be gone ────────────────────
+        # ── 6. Confirm success ──────────────────────────────────────────────
+        #
+        # X can signal success in two ways:
+        #   a) Navigates away from /compose/post → URL changes to home/timeline
+        #   b) The compose dialog closes → textarea detaches from DOM
+        #
+        # Failure signals:
+        #   - Error toast visible (duplicate tweet, rate limit, etc.)
+        #   - Textarea still present AND URL still /compose/post after 4s
+        #
+        current_url = page.url
+
+        # Check for X's error toast first
         try:
-            page.wait_for_selector(
-                _TEXTAREA_SELECTOR,
-                state="detached",
+            error_toast = page.locator(
+                '[data-testid="toast"] [data-testid="toast-error"], '
+                '[role="alert"], '
+                'div:has-text("duplicate"), '
+                'div:has-text("already sent")'
+            ).first
+            if error_toast.count() > 0 and error_toast.is_visible(timeout=1500):
+                toast_text = error_toast.inner_text()[:120]
+                log.warning(f"X rejected the tweet: {toast_text}")
+                return False
+        except Exception:
+            pass
+
+        # Check if page navigated away from compose
+        try:
+            page.wait_for_url(
+                lambda url: "compose" not in url,
                 timeout=4000,
             )
-            log.info(f"✓ Tweet posted: {text[:60]}...")
+            log.info(f"✓ Tweet posted (page navigated): {text[:60]}...")
             random_delay()
             return True
         except Exception:
-            # Textarea still present — post may have silently failed
-            log.warning("Compose textarea still present after submit — tweet may not have posted")
-            return False
+            pass
+
+        # Fallback: check if textarea detached
+        try:
+            page.wait_for_selector(_TEXTAREA_SELECTOR, state="detached", timeout=2000)
+            log.info(f"✓ Tweet posted (textarea closed): {text[:60]}...")
+            random_delay()
+            return True
+        except Exception:
+            pass
+
+        # Still on compose page with textarea present — failed
+        log.warning(
+            f"Tweet post unconfirmed — still on compose page. "
+            f"Possible duplicate or silent rejection. Text: {text[:80]}"
+        )
+        return False
 
     except Exception as e:
         log.error(f"Failed to post tweet: {e}")
