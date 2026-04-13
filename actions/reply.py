@@ -71,7 +71,34 @@ def reply_tweet(page, tweet, text, timeout=10000):
             log.error(f"→ Reply selector not found: textarea never appeared — {wait_err}")
             return False, None
 
-        time.sleep(0.8)
+        time.sleep(0.6)
+
+        # ── Step 2b: Dismiss twc-cc-mask overlay if present ────────────────
+        # The overlay intercepts pointer events and prevents typing, which
+        # keeps the submit button disabled.
+        try:
+            overlay = page.locator('[data-testid="twc-cc-mask"]')
+            if overlay.count() > 0 and overlay.is_visible(timeout=1000):
+                log.debug("twc-cc-mask overlay detected in reply dialog — removing")
+                for btn_text in ("Accept all cookies", "Accept all", "Accept"):
+                    btn = page.locator(f"button:has-text('{btn_text}')").first
+                    try:
+                        if btn.count() > 0 and btn.is_visible(timeout=800):
+                            btn.click(timeout=2000)
+                            time.sleep(0.5)
+                            break
+                    except Exception:
+                        pass
+                else:
+                    # Fallback: remove via JS
+                    page.evaluate(
+                        "() => { const el = document.querySelector('[data-testid=\"twc-cc-mask\"]'); if (el) el.remove(); }"
+                    )
+                    time.sleep(0.3)
+        except Exception:
+            pass  # overlay check failed — continue anyway
+
+        time.sleep(0.4)
 
         # ── Step 3: Locate textarea with fallback ──────────────────────────
         text_area = page.locator(REPLY_TEXTAREA).first
@@ -86,18 +113,24 @@ def reply_tweet(page, tweet, text, timeout=10000):
 
         # ── Step 4: Type the reply ─────────────────────────────────────────
         log.info("→ Typing reply...")
+        # Force-focus textarea first (bypasses any remaining overlay)
+        try:
+            text_area.click(force=True, timeout=3000)
+            time.sleep(0.3)
+        except Exception:
+            pass
         typed_ok = human_typing(text_area, text, wpm=60)
         if not typed_ok:
             log.error("→ Reply FAILED: human_typing() returned False")
             return False, None
         log.info("→ Typing complete")
 
-        # Small pause so X registers the text and enables the submit button
-        time.sleep(1.0)
+        # Pause so X's React state registers the typed text and enables the button
+        time.sleep(1.2)
 
         # ── Step 5: Find and click the submit button ───────────────────────
         log.info("→ Submitting reply...")
-        submit_btn = _find_enabled_submit(page, timeout_ms=6000)
+        submit_btn = _find_enabled_submit(page, timeout_ms=8000)
 
         if submit_btn is not None:
             try:
