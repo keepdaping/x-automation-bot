@@ -1,8 +1,11 @@
-# X Automation Bot
+# X Automation Bot — Keepdaping
 
-A production-grade Twitter/X engagement automation system for lead generation. Finds high-intent users expressing pain around automation, AI tooling, and client acquisition — then engages them with an **adaptive, reward-driven decision system** that improves DM conversion over time.
+A production-grade Twitter/X engagement system for high-intent lead generation. Finds founders, freelancers, and developers publicly expressing pain around automation, client acquisition, or AI tooling — then engages them using an **autonomous ReAct agent** that reasons about every action before taking it.
 
-Built with **Playwright** (browser automation), **Claude API** (content generation), **SQLite** (state tracking), and a **self-learning layer** (UCB1 bandits + policy engine) that replaces hardcoded probabilities with evidence-based decisions. Runs continuously on a VPS with human-like session behavior.
+Built with **Playwright** (browser automation), **Claude API** (content generation + intent scoring), **SQLite** (state + learning), and a **self-learning layer** (UCB1 bandits + Bayesian policy engine) that continuously improves decisions based on real outcome data.
+
+> **Architecture:** v3 — ReAct AgentController (Reason + Act loop).
+> The bot no longer follows a static pipeline. It now *thinks*, then *acts*, then *observes*, in a continuous cycle driven by `core/agent_controller.py`.
 
 ---
 
@@ -10,18 +13,18 @@ Built with **Playwright** (browser automation), **Claude API** (content generati
 
 1. [Project Overview](#1-project-overview)
 2. [System Architecture](#2-system-architecture)
-3. [Self-Learning System](#3-self-learning-system)
-4. [Execution Flow](#4-execution-flow)
-5. [Key Components](#5-key-components)
-6. [AI Integration](#6-ai-integration)
-7. [Current Features](#7-current-features)
-8. [Configuration Guide](#8-configuration-guide)
-9. [Deployment Guide](#9-deployment-guide)
-10. [Safety & Anti-Ban Design](#10-safety--anti-ban-design)
-11. [Known Limitations](#11-known-limitations)
-12. [Future Improvements](#12-future-improvements)
-13. [System Evolution](#13-system-evolution)
-14. [Why the System Now Works](#14-why-the-system-now-works)
+3. [ReAct Agent — How It Thinks](#3-react-agent--how-it-thinks)
+4. [Self-Learning System](#4-self-learning-system)
+5. [Execution Flow](#5-execution-flow)
+6. [Key Components](#6-key-components)
+7. [AI Integration](#7-ai-integration)
+8. [Current Features](#8-current-features)
+9. [Configuration Guide](#9-configuration-guide)
+10. [Deployment Guide](#10-deployment-guide)
+11. [Safety & Anti-Ban Design](#11-safety--anti-ban-design)
+12. [Known Limitations](#12-known-limitations)
+13. [Future Improvements](#13-future-improvements)
+14. [System Evolution](#14-system-evolution)
 
 ---
 
@@ -29,16 +32,16 @@ Built with **Playwright** (browser automation), **Claude API** (content generati
 
 ### What it does
 
-The bot operates four concurrent functions:
+The bot runs four concurrent functions:
 
-1. **Posts one original tweet per day** — AI-generated, on a rotating content pillar schedule, designed to attract inbound DMs
-2. **Engages high-intent users** — searches for people publicly expressing pain around growth, automation, or client acquisition, then replies/follows/quotes them using an adaptive decision engine
-3. **Tracks and measures interaction outcomes** — every reply is logged; browser-based checks detect if the target replied back or followed; outcomes feed back into the decision system
-4. **Learns from outcomes daily** — a UCB1 bandit system and policy engine continuously update action probabilities and search phrase selection based on what actually drives conversions
+1. **Posts one original tweet per day** — AI-generated on a rotating content pillar schedule, designed to attract inbound DMs
+2. **Engages high-intent users** — searches for people expressing pain around growth, automation, or client acquisition; replies, follows, and quotes using an autonomous ReAct agent
+3. **Tracks and measures outcomes** — every reply is logged; browser-based checks detect if the target replied back, followed, or DM'd; outcomes feed back into the decision system
+4. **Learns from outcomes daily** — a UCB1 bandit system and Bayesian policy engine continuously update action probabilities and search phrase selection based on what actually drives conversions
 
 ### Business goal
 
-Drive inbound DMs and profile clicks from founders, freelancers, and developers who need automation help — without cold outreach or hard selling. Every piece of content is designed to make the target think *"this person gets my problem"*. The system self-improves: strategies that generate replies and follows get used more; strategies that don't are automatically deprioritised.
+Drive inbound DMs and profile clicks from founders, freelancers, and developers who need automation help — without cold outreach or hard selling. Every piece of content is designed to make the target think *"this person understands my problem."* The system self-improves: strategies that generate replies and follows get reinforced; strategies that don't are automatically deprioritised.
 
 ### Tech stack
 
@@ -46,7 +49,8 @@ Drive inbound DMs and profile clicks from founders, freelancers, and developers 
 |---|---|
 | Browser control | Playwright (sync API, Chromium) |
 | Content generation | Anthropic Claude API (Haiku by default) |
-| State storage | SQLite (two databases) |
+| Agent reasoning | Claude API via AgentController |
+| State storage | SQLite (`bot.db` + `rate_limiter.db`) |
 | Background tasks | APScheduler BackgroundScheduler |
 | Language | Python 3.10+ |
 
@@ -57,61 +61,62 @@ Drive inbound DMs and profile clicks from founders, freelancers, and developers 
 ```
 x-automation-bot/
 │
-├── run_bot.py                  # Entry point — BotController main loop
-├── config.py                   # All settings, loaded from .env at startup
-├── database.py                 # SQLite operations (posts, replies, follows, conversions)
-├── feedback.py                 # Interaction outcome tracking (interactions table)
+├── run_bot.py                    # Entry point — BotController main loop
+├── config.py                     # All settings, loaded from .env at startup
+├── database.py                   # SQLite operations (posts, replies, follows)
+├── feedback.py                   # Interaction outcome tracking (interactions table)
 │
 ├── browser/
-│   ├── browser_manager.py      # Playwright lifecycle: launch, auth, restart
-│   └── stealth.py              # Anti-detection: launch args, JS injections
+│   ├── browser_manager.py        # Playwright lifecycle: launch, auth, restart
+│   └── stealth.py                # Anti-detection: launch args, JS injections
 │
 ├── core/
-│   ├── engagement.py           # Main engagement coordinator per cycle
-│   ├── pipeline.py             # Per-tweet: intent → policy → action routing
-│   ├── reply_handler.py        # Reply generation + bandit style selection
-│   ├── follow_handler.py       # Follow action + feedback logging
-│   ├── quote_handler.py        # Quote-tweet action
-│   ├── generator.py            # Raw Claude API calls with error handling
-│   ├── rate_limiter.py         # Daily/hourly/cluster limits (rate_limiter.db)
-│   ├── session_manager.py      # Active hours, session duration, breaks
-│   ├── error_handler.py        # Error classification, backoff, detection cooldown
-│   ├── scheduler.py            # BackgroundScheduler: housekeeping + learning
+│   ├── agent_controller.py       # ★★ PRIMARY: ReAct autonomous agent
+│   │                             #    Implements THOUGHT → ACTION → OBSERVE loop
+│   │                             #    Owns: search, intent analysis, memory, self-correction
+│   ├── engagement.py             # Thin wrapper — delegates to AgentController
+│   ├── pipeline.py               # Per-tweet routing (used by agent internally)
+│   ├── reply_handler.py          # Reply generation + bandit style selection
+│   ├── follow_handler.py         # Follow action + feedback logging
+│   ├── quote_handler.py          # Quote-tweet action
+│   ├── generator.py              # Raw Claude API calls with error handling
+│   ├── rate_limiter.py           # Daily/hourly/cluster limits (rate_limiter.db)
+│   ├── session_manager.py        # Active hours, session duration, breaks
+│   ├── error_handler.py          # Error classification, backoff, detection cooldown
+│   ├── scheduler.py              # BackgroundScheduler: housekeeping + learning
 │   │
-│   ├── outcome_updater.py      # ★ Browser-checks past replies; marks stale rows
-│   ├── reward_aggregator.py    # ★ Read-only stats (style/intent/phrase) + Bayesian smooth
-│   ├── bandit.py               # ★ UCB1 bandit — reply style + phrase selection
-│   ├── policy.py               # ★ Evidence-adjusted action probabilities (TTL-cached)
-│   └── learning.py             # ★ Daily loop: outcomes → bandit rewards
+│   ├── outcome_updater.py        # ★ Browser-checks past replies; marks stale rows
+│   ├── reward_aggregator.py      # ★ Read-only stats (style/intent/phrase) + Bayesian smooth
+│   ├── bandit.py                 # ★ UCB1 bandit — reply style + phrase selection
+│   ├── policy.py                 # ★ Evidence-adjusted action probabilities (TTL-cached)
+│   └── learning.py               # ★ Daily loop: outcomes → bandit rewards
 │
 ├── content/
-│   ├── engine.py               # Single entry point for all content generation
-│   ├── prompts.py              # System prompts, voice rules, tweet patterns
-│   ├── content_moderator.py    # Validates and scores generated content
-│   ├── content_cache.py        # Reply cache (exact + semantic dedup)
-│   └── conversation_graph.py   # Multi-turn memory (disabled, Phase 2)
+│   ├── engine.py                 # Single entry point for all content generation
+│   ├── prompts.py                # System prompts, voice rules, tweet patterns
+│   ├── content_moderator.py      # Validates and scores generated content
+│   └── content_cache.py          # Reply cache (exact + semantic dedup)
 │
 ├── actions/
-│   ├── reply.py                # Types and submits a reply via Playwright
-│   ├── follow.py               # Clicks Follow, saves to DB (two-phase: click then log)
-│   ├── like.py                 # Clicks Like
-│   ├── tweet.py                # Posts an original tweet
-│   ├── quote_tweet.py          # Quotes a tweet with AI commentary
-│   └── unfollow.py             # Unfollows non-reciprocators after N days
+│   ├── reply.py                  # Types and submits a reply via Playwright
+│   ├── follow.py                 # Clicks Follow, saves to DB
+│   ├── like.py                   # Clicks Like
+│   ├── tweet.py                  # Posts an original tweet
+│   ├── quote_tweet.py            # Quotes a tweet with AI commentary
+│   └── unfollow.py               # Unfollows non-reciprocators after N days
 │
 ├── search/
-│   └── search_tweets.py        # Navigates to search, scrolls, filters, returns tweets
+│   └── search_tweets.py          # Navigates to search, scrolls, filters, returns tweets
 │
 └── utils/
-    ├── intent_scorer.py        # ★ Multi-pass pain signal detection (70+ phrases, accumulation)
-    ├── llm_intent_scorer.py    # Claude-based intent scoring (opt-in via INTENT_MODE)
-    ├── human_behavior.py       # Burst typing, random delays, natural scrolling
-    ├── tweet_metrics.py        # Extracts like/reply/retweet counts from DOM
-    ├── engagement_score.py     # Scores tweet quality for search filtering
-    ├── tweet_text.py           # Extracts visible text from tweet element
-    ├── language_handler.py     # Filters non-English tweets
-    ├── selectors.py            # All CSS/aria selectors in one place
-    └── simple_queue.py         # Basic thread-safe job queue (stub)
+    ├── intent_scorer.py          # ★ Multi-pass pain signal detection (70+ phrases)
+    ├── llm_intent_scorer.py      # Claude-based intent scoring (opt-in via INTENT_MODE)
+    ├── human_behavior.py         # Burst typing, random delays, natural scrolling
+    ├── tweet_metrics.py          # Extracts like/reply/retweet counts from DOM
+    ├── engagement_score.py       # Scores tweet quality for search filtering
+    ├── tweet_text.py             # Extracts visible text from tweet element
+    ├── language_handler.py       # Filters non-English tweets
+    └── selectors.py              # All CSS/aria selectors in one place
 ```
 
 ### How the layers connect
@@ -121,40 +126,117 @@ Config (.env)
     │
     ▼
 BotController (run_bot.py)
-    ├── SessionManager      ← controls WHEN to run
-    ├── RateLimiter         ← controls HOW OFTEN to run
-    ├── BrowserManager      ← ONE Playwright instance for everything
-    ├── BackgroundScheduler ← housekeeping + daily learning cycle
+    ├── SessionManager              ← controls WHEN to run
+    ├── RateLimiter                 ← controls HOW OFTEN to run
+    ├── BrowserManager              ← ONE Playwright instance for everything
+    ├── BackgroundScheduler         ← housekeeping + daily learning cycle
     │
     ├── Daily Tweet Path
     │     └── ContentEngine.generate_daily_tweet()
     │               └── Claude API + 6 quality gates
     │
     └── Engagement Cycle (core/engagement.py)
-              ├── select_search_phrase()    → 75% intent-targeted / 25% bandit
-              ├── search_tweets()           → phrase → scored tweet list
-              ├── OutcomeUpdater            → browser-check past replies (15%)
-              ├── score_intent()            → multi-pass routing (1/2/3)
-              ├── PolicyEngine              → evidence-adjusted probabilities
-              │                              + minimum floors + cold-start guard
-              ├── ReplyBandit.select()      → UCB1-chosen reply style
-              │                              + epsilon boost when all-zero
-              ├── ContentEngine             → Claude API → reply text
-              ├── reply/follow/like()       → Playwright actions
-              ├── FeedbackTracker           → writes to bot.db/interactions
-              └── Forced fallback           → 1 guaranteed reply if cycle silent
+              └── AgentController.run_cycle()    ← ★ ALL REASONING LIVES HERE
+                    │
+                    ├── strategy_lookup_tool()   THOUGHT: what do the stats say?
+                    │     └── RewardAggregator   → style rewards, phrase rewards, rate pressure
+                    │
+                    ├── _choose_search_phrase()  THOUGHT: 75% intent / 25% UCB1 bandit
+                    │
+                    ├── search_tool(phrase)      ACTION: navigate + return tweets
+                    │     └── 3-tier fallback    exact → simplified → backup phrase
+                    │
+                    └── Per-tweet loop:
+                          ├── analyze_intent_tool()    ACTION: score_intent + LLM override
+                          ├── _check_memory()          THOUGHT: prior interaction with user?
+                          ├── PolicyEngine             STRATEGY: evidence-adjusted probabilities
+                          ├── _decide_action()         THOUGHT: choose reply/follow/like/scroll
+                          └── engagement_action_tool() ACTION: execute chosen action
+                                └── _do_reply()         → self-correction loop (up to 3x)
+                                      ├── generate candidate
+                                      ├── ContentModerator.validate()
+                                      ├── signal_density / named_role gates
+                                      └── if failed → THOUGHT: diagnose + regenerate
 
     Self-Learning Layer (background, daily):
-              ├── OutcomeUpdater            → marks stale interactions as checked
-              ├── LearningLoop              → reads outcomes → updates bandits
-              └── RewardAggregator          → read-only stats for policy engine
+              ├── OutcomeUpdater     → marks stale interactions as checked
+              ├── LearningLoop       → reads outcomes → updates bandits
+              └── RewardAggregator   → read-only stats for policy engine
 ```
 
 ---
 
-## 3. Self-Learning System
+## 3. ReAct Agent — How It Thinks
 
-The bot replaces hardcoded action probabilities with an **adaptive, reward-driven decision system**. No ML frameworks are required — the system uses UCB1 bandits, a Bayesian-smoothed policy engine, and a daily learning loop built entirely on SQLite.
+`core/agent_controller.py` is the primary execution hub. Every decision is reasoned before it is executed, and every result is observed before the next step. The console logs make this reasoning visible in real time.
+
+### The THOUGHT → ACTION → OBSERVE pattern
+
+```
+[THOUGHT ] Pre-flight: checking detection cooldown.
+[ACTION  ] strategy_lookup_tool()
+[OBSERVE ] Rate remaining={reply:12, follow:9, like:18} | pressure=18% | best_style=grok
+[THOUGHT ] Consulting bandit rewards and intent keyword pool for search phrase.
+[THOUGHT ] Search phrase: 'struggling to get clients' (75% intent-targeted path)
+[ACTION  ] search_tool(query='struggling to get clients')
+[OBSERVE ] Found 8 tweets for 'struggling to get clients'
+[THOUGHT ] Found 8 tweets. Will analyze intent and choose engagement action for each.
+
+[THOUGHT ] — Tweet 1/8 —
+[ACTION  ] analyze_intent_tool(text='Every tool I try breaks after a week...')
+[OBSERVE ] Intent=HIGH (score=3)
+[THOUGHT ] Memory: no prior interaction with @founder_jane.
+[THOUGHT ] Intent=HIGH | policy: reply=0.72, follow=0.18 | remaining: replies=12, follows=9
+[THOUGHT ] Decision: execute 'reply' on this tweet.
+[ACTION  ] engagement_action_tool(action=reply)
+[OBSERVE ] Moderation PASSED (style=grok, quality=0.76, signal=3/4, has_role=True)
+[OBSERVE ] Reply posted [style=grok] | reply_id=1923847561234
+
+[THOUGHT ] — Tweet 3/8 —
+[ACTION  ] analyze_intent_tool(text='n8n is finally working!')
+[OBSERVE ] Intent=LOW (score=1)
+[THOUGHT ] Memory: already replied to @n8n_user today (style=standard). Switching to 'follow'.
+[THOUGHT ] Decision: execute 'follow' on this tweet.
+```
+
+### Self-correction loop
+
+When generated reply text fails ContentModerator gates, the agent does not silently drop it. It diagnoses the specific failure and requests a corrected generation:
+
+```
+[OBSERVE ] Moderation FAILED — gates: signal_density | signal_density=1/4 | has_named_role=False | quality=0.38
+[THOUGHT ] Self-correction attempt 2/3. Last failure: 'signal_density'. Trying style='curiosity'.
+           Correction hint sent to LLM: "Include a specific tool name, a number,
+           and a concrete outcome or consequence."
+[OBSERVE ] Moderation PASSED (style=curiosity, quality=0.61, signal=2/4, has_role=True)
+[OBSERVE ] Reply posted [style=curiosity] | reply_id=1923847561299
+```
+
+### Four agentic properties
+
+| Property | Mechanism |
+|---|---|
+| **Autonomy** | `strategy_lookup_tool()` reads Bandit + RewardAggregator stats before every cycle; the agent selects search phrases and reply styles based on live reward data, not hardcoded rules |
+| **Self-Correction** | `_do_reply()` loops up to `MAX_REGENERATIONS=3` times; on each failure it diagnoses which gate failed (`signal_density`, `named_role`, `generic`) and adjusts the LLM prompt |
+| **Memory Integration** | `_check_memory()` queries the `interactions` table before each tweet; if a user was replied to today, the agent switches to `follow` instead of replying again |
+| **Rate-Pressure Awareness** | `rate_pressure` is computed at cycle start; if `> 0.85`, the agent routes all actions to `scroll_timeline` until pressure drops |
+
+### Inviolable floors
+
+These two probability floors are enforced in `_decide_action()` and **cannot be reasoned around**. They guarantee the learning loop always has signal:
+
+```
+reply_prob  >= 0.15   (MIN_REPLY_PROB)
+follow_prob >= 0.05   (MIN_FOLLOW_PROB)
+```
+
+If all tweets score LOW intent and every probability roll misses, the **forced-fallback reply** fires: one guaranteed reply on the first tweet in the results, regardless of intent score.
+
+---
+
+## 4. Self-Learning System
+
+The bot replaces hardcoded action probabilities with an adaptive, reward-driven decision system. No ML frameworks are required — UCB1 bandits, Bayesian smoothing, and a daily learning loop are built entirely on SQLite.
 
 ### Data flow: interactions → reward → policy → action
 
@@ -178,10 +260,14 @@ Stale rows marked checked_at  (rows > 48h without browser check)
 Reply bandit updated   AVG(outcome_score) per style → normalised reward → UCB1 arms
 Phrase bandit updated  time-weighted conversion_yield per phrase → UCB1 arms
     │
-    │  [every tweet, main thread — PolicyEngine]
+    │  [every cycle start — AgentController.strategy_lookup_tool()]
+    ▼
+RewardAggregator snapshot → rate_pressure, best_style, keyword_rewards
+    │
+    │  [every tweet — PolicyEngine]
     ▼
 evidence-adjusted probabilities  (reply_prob, follow_prob, style_weights)
-    + minimum floors enforced (reply ≥ 0.15, follow ≥ 0.05)
+    + minimum floors enforced (reply >= 0.15, follow >= 0.05)
     │
     ▼
 UCB1 bandit selects:  grok | curiosity | standard
@@ -202,60 +288,39 @@ UCB1 bandit selects:  grok | curiosity | standard
 
 The reply-style bandit (`reply_style` namespace) has three arms: `grok`, `curiosity`, `standard`.
 
-Each arm stores `(trials, total_reward)`. On every daily learning cycle, the bandit receives `normalised_avg_outcome_score` (in [0,1]) as a reward for each style that sent replies that day. UCB1 selects:
+Each arm stores `(trials, total_reward)`. On every daily learning cycle, the bandit receives `normalised_avg_outcome_score` (in [0,1]) as a reward for each style. UCB1 selects:
 
 ```
 score(arm) = avg_reward(arm) + C × √( ln(total_trials) / trials(arm) )
 ```
 
-The confidence term is large when an arm is under-tried (exploration), small when well-tried (exploitation). A 15% epsilon floor ensures no arm is ever permanently abandoned. A sliding window (`WINDOW_SIZE=30`) prevents stale history from dominating — old data is gradually evicted on each update.
+The confidence term is large when an arm is under-tried (exploration), small when well-tried (exploitation). A 15% epsilon floor ensures no arm is permanently abandoned. A sliding window (`WINDOW_SIZE=30`) prevents stale history from dominating.
 
-**Zero-reward exploration boost:** When all arms have accumulated zero positive reward (typical at cold start or after a learning gap), the effective epsilon is raised to 0.40. This prevents 85% of selections from clustering on a single arm — the arm with fewest trials — which would produce no style diversity and therefore no usable learning signal. At 40% epsilon, all styles are tried frequently enough to generate comparable outcome data.
-
-The same mechanism applies to search phrases (40+ arms, `WINDOW_SIZE=30`, epsilon=20%).
+**Zero-reward boost:** When all arms have zero reward (cold start), epsilon raises to 0.40, ensuring all styles are explored before the policy commits to one.
 
 ### How the policy calibrates probabilities
 
-`PolicyEngine.get_action_probabilities(context)` reads Bayesian-smoothed reward stats from `RewardAggregator` (cached for 60 seconds per cycle) and applies bounded adjustments:
-
 ```
 baseline reply_prob (from Config)
-    ± adjustment bounded to [-0.10, +0.20]   ← only fires with ≥10 samples
+    ± adjustment bounded to [-0.10, +0.20]   ← only fires with >= 10 samples
     × AGGRESSION_LEVEL (global multiplier)
-    → enforced minimum floor (reply ≥ 0.15, follow ≥ 0.05)
+    → minimum floors applied (reply >= 0.15, follow >= 0.05)
     → final reply_prob
 ```
 
-**Minimum floors** are applied after the aggression multiplier so they cannot be overridden by any combination of penalty, multiplier, or configuration. They guarantee the bot always takes some action, which in turn keeps the learning loop populated with signal.
-
-Style weights use `smoothed_score + 0.5` offset so a zero-performing style still gets weight 0.5 (never starved). Adjustments require `MIN_SAMPLES=10` confirmed interactions before firing — prevents early-data wild swings. Bayesian smoothing pulls all averages toward a neutral prior (0.15) until sufficient data accumulates.
-
-**Penalty behavior for zero-outcome data:** The policy does not penalise when `avg_outcome_score = 0.0`. Zero is the default value for interactions that haven't been browser-checked yet (set by `mark_stale_as_checked()`). Treating zero as "real failure" would trigger a permanent penalty from phantom data. Instead, penalty only fires when `0 < avg < 0.5` — a non-zero but weak result that represents genuine underperformance.
+**Penalty behaviour:** The policy does not penalise `avg_outcome_score = 0.0`. Zero is the default value for unchecked interactions. Penalty fires only when `0 < avg < 0.5` — a non-zero but weak result that represents genuine underperformance.
 
 ### Cold-start protection
 
-When `total_trials < 10` across all intent levels in the reward aggregator, the policy switches to **cold-start mode**:
+When total checked interactions < 10, the policy switches to **cold-start mode**:
 
 - All reward-based probability adjustments are skipped
-- Style weights are widened to `{grok: 1.5, curiosity: 1.5, standard: 1.0}` for broader exploration
-- Baseline Config probabilities are used directly
-
-This prevents phantom-zero batch-marks from triggering the penalty system before the bot has accumulated meaningful interaction data. The cold-start guard uses already-cached stats — no additional DB round-trips.
-
-### Day-1 behaviour
-
-On the first day with zero interaction history:
-- All reward queries return empty dicts → cold-start mode activates
-- All policy adjustments are skipped silently
-- Exact original hardcoded probabilities are used
-- Bandits explore uniformly (cold-start path) with epsilon boosted to 0.40
-- Minimum probability floors still enforce `reply ≥ 0.15`, `follow ≥ 0.05`
-
-The system degrades cleanly to baseline and improves automatically as data accumulates. No configuration changes are needed to activate learning.
+- Style weights widened to `{grok: 1.5, curiosity: 1.5, standard: 1.0}` for broader exploration
+- Baseline Config probabilities used directly
 
 ---
 
-## 4. Execution Flow
+## 5. Execution Flow
 
 ### Startup sequence
 
@@ -268,8 +333,9 @@ python run_bot.py
   ├── 4. init_session_manager()       Load session state from disk
   ├── 5. BrowserManager.start()       Launch Chromium, load session.json cookies
   ├── 6. check_authenticated()        Navigate to x.com/home, verify logged in
-  ├── 7. start_scheduler()            Start BackgroundScheduler (daemon thread)
-  └── 8. Enter main loop
+  ├── 7. log "AgentController (ReAct)" mode active
+  ├── 8. start_scheduler()            Start BackgroundScheduler (daemon thread)
+  └── 9. Enter main loop
 ```
 
 ### Main loop (continuous)
@@ -281,121 +347,101 @@ while running:
   │     No  → sleep up to 5h, continue
   │     Yes → proceed
   │
-  ├── session_manager.start_session()
-  │     Sets: duration (20–45 min), action target (8–12), first action delay
+  ├── _check_and_post_daily()           ← independent of engagement
+  │     DB count gate → in-memory gate → date gate → generate → post
   │
-  ├── _check_and_post_daily()         ← independent of engagement
-  │     • count_daily_posts_today() → hard DB gate (restart-proof)
-  │     • has_posted_today()        → soft date check
-  │     • Random time within DAILY_TWEET_START/END window
-  │     • generate_daily_tweet() → post if signal passes all gates
-  │
-  └── run_engagement(page, keyword)   ← one full engagement cycle
+  └── run_engagement(page)              ← delegates to AgentController
 ```
 
-### One engagement cycle
+### One engagement cycle (AgentController.run_cycle)
 
 ```
-run_engagement()
+AgentController.run_cycle()
   │
-  ├── Check rate limits                  Bail if all daily limits exhausted
-  ├── 15% chance: check past outcomes    OutcomeUpdater.check_pending_with_page()
-  ├── 25% chance: browse timeline        Scroll home feed (human behavior)
-  ├── 30% chance: unfollow cycle         Unfollow stale non-reciprocators
-  ├── Once/day:   run_learning_cycle()   Update bandit arms from yesterday
+  ├── Pre-flight: detection cooldown check
   │
-  ├── select_search_phrase()             Two-tier phrase selection:
-  │     75% → random from INTENT_KEYWORDS  (pain-signal phrases, pre-filtered)
-  │     25% → UCB1 bandit over SEARCH_PHRASES (conversion-weighted)
-  │     └── Three fallback strategies if phrase returns 0 tweets
+  ├── strategy_lookup_tool()            THOUGHT: snapshot rewards + rate state
+  │     └── RewardAggregator            style_rewards, keyword_rewards, rate_pressure
+  │         if rate_pressure > 0.85 → THOUGHT: will use low-cost actions this cycle
   │
-  ├── search_tweets(phrase)              Return up to 8 scored tweet elements
+  ├── _choose_search_phrase()           THOUGHT: 75% INTENT_KEYWORDS / 25% UCB1 bandit
+  │     if strategy has recommended_phrase → log it as context for THOUGHT
   │
-  ├── store first_tweet                  Kept for forced-fallback path
+  ├── search_tool(phrase)               ACTION: 3-tier fallback search
+  │     tier 1: exact phrase
+  │     tier 2: simplified (drop first word)
+  │     tier 3: backup phrase from bandit
   │
-  └── For each tweet:
-        ├── get_tweet_text()
-        ├── score_intent()               → multi-pass (see Intent Scoring below)
-        ├── [HIGH only] LLMIntentScorer  → negation check / intent downgrade
-        │
-        ├── PolicyEngine.get_action_probabilities(context)
-        │     reads:    RewardAggregator (TTL-cached, 60s)
-        │     cold-start guard: skip adjustments if trials < 10
-        │     adjusts:  reply_prob, follow_prob, style_weights (bounded)
-        │     floors:   reply_prob ≥ 0.15, follow_prob ≥ 0.05 (post-aggression)
-        │
-        ├── [Decision log] intent, reply_prob, roll, reply=YES/NO, follow_prob
-        │
-        ├── Routing (policy-driven):
-        │   HIGH  (3) → reply 100% (always) + curiosity style + follow at policy prob
-        │   MEDIUM(2) → reply at policy-adjusted prob + follow at policy prob
-        │   LOW   (1) → reply at policy-adjusted prob + follow at policy prob
-        │
-        ├── ReplyBandit.select()         UCB1 picks grok | curiosity | standard
-        │     epsilon boosted to 0.40 if all arm rewards are zero
-        │
-        ├── _attempt_reply()             ContentEngine → Claude → Playwright
-        │     └── FeedbackTracker.log_reply()  → interactions table
-        ├── _attempt_follow()            Playwright click → isolated DB save
-        └── _attempt_quote()             policy-adjusted chance → AI commentary → post
+  └── Per-tweet ReAct sub-loop:
+        ├── THOUGHT: tweet N/total
+        ├── analyze_intent_tool()       ACTION: score_intent + LLM override at boundary
+        ├── _check_memory(handle)       THOUGHT: prior interaction? → shift reply → follow
+        ├── PolicyEngine                STRATEGY: evidence-adjusted probabilities
+        ├── _decide_action()            THOUGHT: rate_pressure + memory + intent + policy
+        ├── engagement_action_tool()    ACTION: reply / follow / like / quote / scroll
+        │     └── if reply:
+        │           └── _do_reply()     self-correction loop (MAX_REGENERATIONS=3)
+        │                 ├── _generate_candidate()  → LLM with correction hint on retry
+        │                 ├── _analyze_reply()       → validate + signal_density + named_role
+        │                 └── if passed: reply_tweet() → rate_limiter.record_action()
+        └── OBSERVE: result → refresh rate counts → next tweet
 
-  └── Forced-fallback reply (if actions_taken == 0 after full loop)
-        └── Re-process first_tweet with force_reply=True
-              Bypasses probability roll; attempts 1 guaranteed reply
-              Guarantees: bot never goes completely silent in a cycle
-              Respects rate limiter; fires only if "reply" action is still available
+  └── Inviolable floor:
+        if actions == 0 → THOUGHT: forcing fallback reply on first tweet
 ```
 
-### Intent scoring (multi-pass)
+### Intent scoring (multi-pass, inside analyze_intent_tool)
 
 ```
 score_intent(tweet_text)
-  │
   ├── Pass 1: single HIGH phrase match        → return 3 immediately
-  │     70+ phrases: "need clients", "no sales", "automation not working",
-  │     "struggling to get clients", "not getting results", "tried everything", ...
+  │     70+ phrases: "need clients", "automation not working", "struggling to get clients"
   │
   ├── Pass 2: struggle-marker accumulation
-  │     Check 25 partial frustration markers:
-  │     "struggling", "frustrated", "not working", "giving up", "any advice", ...
-  │     2+ markers found                      → return 2
-  │     1 marker + "?" in tweet               → return 2
+  │     25 partial frustration markers
+  │     2+ markers → return 2; 1 marker + "?" → return 2
   │
   ├── Pass 3: MEDIUM phrase match
-  │     "looking for", "any recommendations", "trying to", "how do i", ...
-  │     phrase found + "?" in tweet           → return 3  (promoted to HIGH)
-  │     phrase found, no "?"                  → return 2
+  │     phrase + "?" → promoted to 3 (HIGH)
+  │     phrase, no "?" → return 2
   │
-  ├── Pass 4: multiple questions alone
-  │     "?" count ≥ 2                         → return 2
+  ├── Pass 4: multiple questions
+  │     count("?") >= 2 → return 2
   │
-  └── Default                                 → return 1 (LOW)
-```
+  └── Default → return 1 (LOW)
 
-### Daily tweet generation
-
-```
-generate_daily_tweet()
-  │
-  ├── Config.get_content_pillar(day_of_year)  Deterministic daily theme
-  ├── Config.get_viral_hook()                 Random hook style
-  │
-  └── Retry loop (up to 4 attempts, 90s budget):
-        ├── Gate 1: basic validation      (length, banned patterns)
-        ├── Gate 2: vague content check   (is_generic equivalent)
-        ├── Gate 3: generic check         (low-effort pattern detection)
-        ├── Gate 4: named role required   (VA, junior, CFO, etc.)
-        ├── Gate 5: strong ending         (question, tension, or number)
-        └── Gate 6: real signal           (signal_density >= 0.75)
-
-        All 6 pass → post immediately
-        Partial pass → save as best candidate
-        All fail → skip slot (silence > noise)
+  [If score == 2 and REFLECTION_ENABLED]:
+  └── LLMIntentScorer.score()   THOUGHT: LLM override for nuanced boundary cases
+        negation detected → downgrade; intent adjusted → log as LLM-override
 ```
 
 ---
 
-## 5. Key Components
+## 6. Key Components
+
+### AgentController (`core/agent_controller.py`)
+
+The primary execution hub. Implements the full ReAct loop for one engagement cycle.
+
+**Callable tools:**
+
+| Tool | Method | Purpose |
+|---|---|---|
+| `strategy_lookup_tool` | `strategy_lookup_tool()` | Reads RewardAggregator + rate state before cycle |
+| `search_tool` | `search_tool(query)` | 3-tier fallback search; returns tweet elements |
+| `analyze_intent_tool` | `analyze_intent_tool(text)` | score_intent + optional LLM boundary override |
+| `engagement_action_tool` | `engagement_action_tool(action, tweet, ...)` | Routes Like/Follow/Reply/Quote/Scroll |
+
+**Internal reasoning:**
+
+| Method | Role |
+|---|---|
+| `_check_memory(handle)` | Queries `interactions` for prior contact; informs action decision |
+| `_decide_action(...)` | Core reasoning: intent + policy + memory + rate_pressure → action type |
+| `_do_reply(...)` | Self-correction loop; diagnoses ContentModerator gate failures |
+| `_generate_candidate(...)` | LLM generation with correction hint on retry |
+| `_choose_search_phrase(...)` | 75/25 split: INTENT_KEYWORDS vs UCB1 bandit |
+| `_thought() / _act() / _observe()` | Structured ANSI-colored console logging |
 
 ### Rate Limiter (`core/rate_limiter.py`)
 
@@ -408,185 +454,123 @@ Four independent enforcement layers — all configurable via `.env`:
 | 2-min cluster | 5 same actions | Prevents action bursts |
 | 10-min global | 8 total actions | Prevents any burst pattern |
 
-Plus per-action minimum spacing: replies require 120s gap, posts 300s, follows 60s.
+Per-action minimum spacing: replies 120s, posts 300s, follows 60s, likes 30s.
 
-Stored in a dedicated `data/rate_limiter.db`. Thread-safe with a lock. Auto-purges history older than 90 days on daily rollover.
-
-### Session Manager (`core/session_manager.py`)
-
-Models a realistic working day. State is persisted to `data/session_state.txt` and restored on restart.
-
-| Behavior | Default |
-|---|---|
-| Active hours | 08:00–23:00 (configurable) |
-| Session length | 20–45 min |
-| Actions per session | 8–12 target |
-| Break length | 30–120 min |
-| Browse-only sessions | 5% chance |
-| Session extension | 40% chance when target reached |
-
-### Content Engine (`content/engine.py`)
-
-Single entry point for all content. Two distinct pipelines:
-
-**Reply pipeline** — speed-optimised:
-cache check → validate input → Claude → validate output → dedup → cache → return
-
-**Daily tweet pipeline** — quality-optimised:
-6 sequential gates → escalating retry prompts → 90s hard timeout → best-effort fallback or skip
+The agent checks `rate_limiter.can_perform_action()` inside `engagement_action_tool()` before every action — this check is inviolable and cannot be bypassed by agent reasoning.
 
 ### Content Moderator (`content/content_moderator.py`)
 
 Rule-based scoring and validation. No AI used here.
 
-- `validate()` — length, banned patterns, punctuation abuse
-- `is_generic()` — multi-word low-effort phrases (any length) + single tokens (≤ 40 chars only, preventing false positives on substantive tweets)
-- `has_named_role()` — requires VA, junior, CFO, founder, etc.
-- `has_strong_ending()` — last line must contain question, role, implication, or number
-- `signal_density()` — 0.0–1.0 score across four signal categories: tool name, number, outcome verb, consequence phrase
-- `score_quality()` — composite 0.0–1.0 score used for cache prioritisation
+| Method | Description |
+|---|---|
+| `validate(text)` | Length, banned patterns, punctuation; returns `(bool, reason)` |
+| `is_generic(text)` | Multi-word low-effort phrase detection |
+| `has_named_role(text)` | Requires VA, junior, CFO, founder, etc. |
+| `signal_density(text)` | 0–4 score across: tool name, number, outcome verb, consequence phrase |
+| `score_quality(text)` | Composite 0–1 score used for cache prioritisation |
+
+The agent's `_analyze_reply()` function runs all gates and returns structured diagnosis:
+
+```python
+{
+    "passed": bool,
+    "gate_failed": str | None,   # hard validation reason
+    "signal_score": int,         # 0-4
+    "has_role": bool,
+    "quality": float,
+    "is_generic": bool,
+    "soft_failures": list,       # ["signal_density", "named_role", ...]
+}
+```
+
+### Session Manager (`core/session_manager.py`)
+
+| Behavior | Default |
+|---|---|
+| Active hours | 08:00–23:00 UTC |
+| Session length | 20–45 min |
+| Actions per session | 8–12 target |
+| Break length | 30–120 min |
+| Browse-only sessions | 5% chance |
 
 ### Feedback Tracker (`feedback.py`)
 
-Logs every reply action to `bot.db/interactions`. Columns include:
+Logs every reply action to `bot.db/interactions`. Key columns:
 
 - `tweet_id`, `reply_id`, `user_handle`
 - `tweet_text`, `reply_text`, `intent`, `reply_style`
-- `got_reply_back`, `got_follow`, `got_dm` (outcome columns, populated by OutcomeUpdater)
+- `got_reply_back`, `got_follow`, `got_dm` (populated by OutcomeUpdater)
 - `outcome_score` — weighted: reply×3, follow×2, DM×5
-
-### Intent Scorer (`utils/intent_scorer.py`)
-
-Multi-pass keyword scoring with three detection layers:
-
-**HIGH_INTENT_PHRASES (70+ entries):** Exact substring matches covering client pain, sales frustration, automation failure, engagement collapse, freelance hardship, and result frustration. One match → score 3 immediately.
-
-**Struggle-marker accumulation:** 25 partial frustration signals (`"struggling"`, `"frustrated"`, `"not working"`, `"any advice"`, etc.) that individually are too weak to signal HIGH but compound reliably. Two markers in the same tweet → score 2. One marker plus a question mark → score 2.
-
-**MEDIUM phrase + question promotion:** MEDIUM phrases (exploration, research, early-building signals) are promoted to HIGH when combined with a question mark — because a question signals active intent to act rather than passive observation.
-
-**Why accumulation scoring matters:** Real human expression is rarely a perfect match for a curated phrase list. "I've been struggling with this for weeks, any suggestions?" scores HIGH through accumulation even though it contains no explicit HIGH phrase. The old scorer returned LOW for this class of tweet.
-
-### Adaptive Decision Layer
-
-Five modules implement the self-learning system. All are read/write DB-only — no browser access, no external services.
-
-**OutcomeUpdater** (`core/outcome_updater.py`)
-- `mark_stale_as_checked()` — background-safe DB-only: marks rows older than 48h as checked
-- `check_pending_with_page(page)` — main-thread only: Playwright checks if the target replied back or followed; uses href-based selector (`a[href='/{handle}']`) rather than fragile text matching
-
-**RewardAggregator** (`core/reward_aggregator.py`)
-- Read-only queries against `interactions` and `search_log`
-- Returns Bayesian-smoothed stats grouped by reply_style, intent, and keyword
-- `smoothed_score` blends observed avg toward a neutral prior (0.15) using `(n × avg + W × prior) / (n + W)` where W=5
-- `data_confidence` field (0–1) signals how much to trust each estimate
-
-**UCB1Bandit** (`core/bandit.py`)
-- Two instances: `reply_style` (3 arms) and `search_phrase` (40+ arms)
-- Sliding-window update (`WINDOW_SIZE=30`): once trials exceed the window, old rewards are gradually evicted — prevents stale history from locking in early decisions
-- Epsilon floor: 15% (reply) and 20% (phrase) random exploration guaranteed
-- **Zero-reward epsilon boost:** When all arm rewards are zero, effective epsilon raises to 0.40 to prevent early lock-in on a single arm
-- State persisted in `bot.db/bandit_arms` table (auto-created)
-
-**PolicyEngine** (`core/policy.py`)
-- Reads `RewardAggregator` stats (TTL-cached for 60s to avoid per-tweet DB reads)
-- **Cold-start guard:** skips all adjustments when total checked trials < 10; uses baseline with widened exploration weights
-- Applies bounded adjustments to baseline probabilities: `±[0.05–0.20]` range, `MIN_SAMPLES=10` required
-- **Zero-outcome skip:** does not penalise when `avg = 0.0`; penalty fires only for `0 < avg < 0.5`
-- **Minimum floors (post-aggression):** `reply_prob ≥ 0.15`, `follow_prob ≥ 0.05` — inviolable
-- Uses `smoothed_score` (not raw avg) for style weight calculation
-- Falls back to Config defaults silently on any error or insufficient data
-- **Decision log:** emits `[Policy]` and `[Decision]` log lines per tweet showing intent, probabilities, random roll, and outcome
-
-**LearningLoop** (`core/learning.py`)
-- Runs once per 24h via APScheduler (idempotent within calendar day)
-- Reply bandit: pushes `AVG(outcome_score) / 10` per style from past 48h (quality-filtered, excludes phantom zeros)
-- Phrase bandit: pushes time-weighted conversion yield — searches from past 48h count 2× over older searches in the 7-day window
-
-### Background Scheduler (`core/scheduler.py`)
-
-Runs as a daemon thread (`BackgroundScheduler`). Does **not** block the main engagement loop and does **not** launch a second browser.
-
-**Jobs:**
-- Every 90–110 minutes: `OutcomeUpdater.mark_stale_as_checked()` — DB-only housekeeping
-- Every 24 hours: `run_learning_cycle()` — updates bandit arms from interaction outcomes
 
 ---
 
-## 6. AI Integration
+## 7. AI Integration
 
 ### Where Claude is used
 
 | Use case | Function | Model | Token budget |
 |---|---|---|---|
-| Engagement reply | `generate_reply()` | Haiku (configurable) | 150 |
-| Daily original tweet | `generate_daily_tweet()` | Haiku (configurable) | 150 |
-| High-intent curiosity reply | `generate_curiosity_reply()` | Haiku (configurable) | 150 |
-| Quote tweet commentary | `generate_quote_text()` | Haiku (configurable) | 150 |
+| Engagement reply (grok style) | `generate_contextual_reply()` | Haiku (configurable) | 150 |
+| Engagement reply (standard) | `content_engine.generate_reply()` | Haiku (configurable) | 150 |
+| Engagement reply (curiosity) | `content_engine.generate_curiosity_reply()` | Haiku (configurable) | 150 |
+| Daily original tweet | `content_engine.generate_daily_tweet()` | Haiku (configurable) | 150 |
+| Quote tweet commentary | `content_engine.generate_quote_text()` | Haiku (configurable) | 150 |
 | Intent scoring (opt-in) | `LLMIntentScorer.score()` | Haiku | 300 |
 
 ### Decision mechanism matrix
 
 | Decision | Mechanism |
 |---|---|
-| Should we reply to this tweet? | **Policy** (evidence-adjusted, minimum floor enforced, cold-start aware) |
-| Which reply style to use? | **Bandit** (UCB1 across grok / curiosity / standard, epsilon boosted if all-zero) |
-| What to reply with | **AI** (Claude, system prompt determined by style) |
-| Is the reply high quality? | **Rules** (ContentModerator, validation gates) |
+| Which search phrase to use? | **Agent** (strategy_lookup_tool → 75% INTENT_KEYWORDS / 25% UCB1 bandit) |
+| Should we reply to this tweet? | **Agent** (intent + memory + policy + rate_pressure → _decide_action) |
+| Which reply style to use? | **Bandit** (UCB1 across grok / curiosity / standard) |
+| What to reply with | **AI** (Claude, system prompt by style; corrected prompt on retry) |
+| Is the reply high quality? | **Rules** (ContentModerator: validate + signal_density + named_role + generic) |
+| Did the ContentModerator fail? | **Agent** (diagnoses gate, adjusts prompt, retries up to 3×) |
 | Is the reply a duplicate? | **Rules** (SHA-256 hash + Jaccard similarity) |
-| Which search phrase to use? | **Two-tier** (75% INTENT_KEYWORDS / 25% UCB1 bandit) |
-| Should we follow this user? | **Policy** (evidence-adjusted, follow ≥ 0.05 floor) |
+| Should we follow this user? | **Agent** (_decide_action: memory + policy + rate_pressure) |
 | Intent classification (fast) | **Rules** (multi-pass keyword scoring, 70+ pain phrases + accumulation) |
-| Intent classification (deep) | **AI** (Claude Haiku, negation-aware, intent==3 only) |
+| Intent classification (deep) | **AI** (Claude Haiku, negation-aware, boundary cases only) |
 | What to post as daily tweet | **AI** (Claude, pillar + hook guided) |
-| Does the daily tweet pass? | **Rules** (signal_density, named_role, etc.) |
+| Does the daily tweet pass? | **Rules** (6-gate pipeline: signal_density, named_role, etc.) |
 | When to take breaks | **Rules** (SessionManager) |
-| Rate limit enforcement | **Rules** (RateLimiter, four layers) |
+| Rate limit enforcement | **Rules** (RateLimiter, 4 layers — inviolable) |
+| Minimum activity guarantee | **Agent** (MIN_REPLY_PROB floor + forced-fallback reply) |
 | Outcome measurement | **Browser** (OutcomeUpdater, Playwright, main thread) |
-| Guaranteed minimum activity | **Rules** (forced-fallback reply if cycle produces zero actions) |
-
-Claude handles content creation and deep intent verification. Routing, filtering, safety, and timing use deterministic rules. The adaptive layer (policy + bandits) sits between rules and actions, shifting probabilities based on evidence without replacing the safety guardrails.
-
-### Intent scoring modes
-
-Controlled by `INTENT_MODE` in `.env`:
-
-| Mode | Behaviour | Cost |
-|---|---|---|
-| `keyword` (default) | Multi-pass keyword matching with accumulation scoring | Free |
-| `hybrid` | Keyword first, LLM as tiebreaker | Low |
-| `llm` | Full Claude scoring with negation awareness | Per-call |
 
 ---
 
-## 7. Current Features
+## 8. Current Features
 
-- **Daily tweet posting** — one original tweet per day on rotating content pillars (money / building / journey), posted within a configurable UTC time window; triple-gated against re-posting (DB COUNT, in-memory flag, date check)
+- **ReAct autonomous agent** — THOUGHT/ACTION/OBSERVE loop drives all engagement decisions; reasoning is visible in real-time console output
+- **Strategy-first cycle** — agent reads RewardAggregator before first search; chooses search phrase and style bias from live reward data
+- **Self-correcting reply generation** — ContentModerator gate failures trigger diagnosed regeneration with specific correction hints (up to 3 attempts)
+- **Memory-aware engagement** — agent queries `interactions` table before each tweet; avoids double-replying to the same user on the same day
+- **Rate-pressure routing** — if daily limits are >85% consumed, agent proactively switches to `scroll_timeline` for the remainder of the cycle
+- **Daily tweet posting** — one original tweet per day on rotating content pillars; triple-gated against re-posting (DB COUNT, in-memory flag, date check)
 - **Intent-based engagement** — HIGH intent users always get a reply; MEDIUM and LOW users engage at policy-adjusted probability with inviolable minimum floors
-- **Multi-pass intent scoring** — 70+ HIGH-intent phrases, struggle-marker accumulation, and question-based promotion ensure real human frustration language is never missed
-- **Intent-first search** — 75% of search cycles use explicit pain-signal phrases from `INTENT_KEYWORDS`; found tweets are pre-filtered toward HIGH/MEDIUM intent before scoring
-- **Forced-fallback reply** — if a complete cycle produces zero actions, one reply is guaranteed on the first found tweet; prevents silent sessions from creating learning gaps
-- **Curiosity replies** — high-intent users receive a conversion-optimised curiosity prompt designed to trigger a DM
+- **Multi-pass intent scoring** — 70+ HIGH-intent phrases, 25-marker struggle accumulation, and question-based promotion ensure nuanced human frustration is never missed
+- **Intent-first search** — 75% of search cycles use explicit pain-signal phrases; 25% use UCB1 bandit over broader pool
+- **Forced-fallback reply** — if a cycle produces zero actions, one reply is guaranteed on the first tweet; prevents silent sessions from creating learning gaps
+- **Inviolable probability floors** — `reply_prob >= 0.15`, `follow_prob >= 0.05` enforced after the aggression multiplier; cannot be overridden by learning or configuration
+- **Curiosity replies** — high-intent users receive a curiosity prompt designed to trigger a DM
 - **Follow strategy** — follows proportional to intent; unfollows non-reciprocators after `UNFOLLOW_AFTER_DAYS` days
-- **Quote tweets** — 10% flat chance per tweet with AI-generated commentary
+- **Quote tweets** — policy-adjusted chance per tweet with AI-generated commentary
 - **Content quality gates** — 6-layer validation before any daily tweet posts; silence is preferred over low-quality noise
-- **Reply caching** — exact and semantic (Jaccard) dedup prevents repetitive replies
 - **Language filtering** — non-English tweets skipped before engaging
 - **Rate limiting** — four layers of enforcement across daily, hourly, cluster, and spacing dimensions
 - **Human session simulation** — active hours, random session lengths, browse-only sessions, natural breaks
 - **Burst typing** — realistic variable-speed character input to avoid bot detection
-- **Engagement scoring** — tweets filtered by like/reply/retweet count + recency boost before processing
-- **Interaction logging** — every reply and follow logged to DB with intent, style, and outcome columns; follows logged in isolated phase so a DB failure never masks a successful click
-- **Decision audit logging** — every tweet decision logs `[Decision] intent=... reply_prob=... roll=... reply=YES/NO` for real-time debugging
+- **Decision audit logging** — `[THOUGHT]`, `[ACTION]`, `[OBSERVE]` prefixes provide real-time visibility into agent reasoning
 - **Background housekeeping** — scheduler keeps the interactions table clean without blocking the main loop
-- **Detection cooldown** — consecutive error tracking with 24h cooldown on suspected detection
-- **Session state persistence** — restart-safe; session and break state restored from disk
+- **Detection cooldown** — 24h automatic cooldown on suspected detection
 
 ---
 
-## 8. Configuration Guide
+## 9. Configuration Guide
 
-All settings are loaded from a `.env` file in the project root. No config requires a code change.
+All settings are loaded from `.env`. No code changes required for configuration.
 
 ### Required
 
@@ -597,22 +581,12 @@ ANTHROPIC_API_KEY=sk-ant-...
 ### Search & engagement
 
 ```env
-# Fallback keywords (pain-signal focused; used when SEARCH_PHRASES not set)
-SEARCH_KEYWORDS=struggling to get clients,need help with automation,no engagement on posts,how to get clients,no sales,looking for clients,automation not working,AI tools for business,freelancing is hard,need more leads
-
-# Pain-signal phrases used in 75% of search cycles (drive HIGH/MEDIUM intent results)
-INTENT_KEYWORDS=struggling to get clients,need more clients,can't find clients,how to get clients,looking for clients,no engagement on posts,nobody sees my content,need help with automation,automation not working,freelancing is so hard,not making money freelancing,how to get followers,need more leads,not getting results
-
-# Probability of engaging (0.0–1.0) — NOTE: policy floors enforce reply ≥ 0.15, follow ≥ 0.05
+SEARCH_KEYWORDS=struggling to get clients,need help with automation,no engagement on posts,how to get clients,no sales
+INTENT_KEYWORDS=struggling to get clients,need more clients,can't find clients,automation not working,freelancing is so hard,not getting results
 LIKE_PROBABILITY=0.6
 REPLY_PROBABILITY=0.25
 FOLLOW_PROBABILITY=0.15
-
-# Global probability multiplier (0.0–1.0); minimum floors apply after this
 AGGRESSION_LEVEL=0.6
-
-# Intent scoring engine
-# Options: keyword (default, free), hybrid, llm (costs API calls)
 INTENT_MODE=keyword
 ```
 
@@ -620,15 +594,9 @@ INTENT_MODE=keyword
 
 ```env
 DAILY_TWEET_ENABLED=true
-
-# Post window (UTC hours) — bot picks a random minute within this range
 DAILY_TWEET_START_HOUR_UTC=10
 DAILY_TWEET_END_HOUR_UTC=13
-
-# Rotating themes (name:description, comma-separated)
 CONTENT_PILLARS=money:Making money online and financial freedom,building:Building products and side projects,journey:Personal growth and lessons learned
-
-# Hook styles rotated randomly
 VIRAL_HOOKS=hot_take,question,thread_hook,contrarian,story,tip
 ```
 
@@ -646,36 +614,22 @@ MAX_QUOTES_PER_DAY=2
 ### Session behavior
 
 ```env
-# Active operating hours (UTC recommended — set VPS timezone to UTC)
 ACTIVE_START_HOUR=8
 ACTIVE_END_HOUR=23
-
-# Session length range (minutes)
 SESSION_DURATION_MIN=20
 SESSION_DURATION_MAX=45
-
-# Break length range (minutes)
 BREAK_DURATION_MIN=30
 BREAK_DURATION_MAX=120
-
-# Time between actions (seconds)
 MIN_ACTION_INTERVAL_SEC=30
 MAX_ACTION_INTERVAL_SEC=180
-
-# Probability a completed session extends instead of breaking
 SESSION_CONTINUE_PROBABILITY=0.40
-
-# Probability a session is browse-only (no actions taken)
 SESSION_BROWSE_ONLY_PROBABILITY=0.05
 ```
 
 ### AI model
 
 ```env
-# Claude model to use for generation
 AI_MODEL=claude-haiku-4-5-20251001
-
-# Token budget per generation call
 AI_MAX_TOKENS=150
 ```
 
@@ -685,25 +639,19 @@ AI_MAX_TOKENS=150
 HEADLESS_MODE=true
 STEALTH_MODE=true
 BROWSER_TIMEOUT_MS=30000
-
-# Path to session cookie file (from create_session.py)
 SESSION_FILE=session.json
 ```
 
 ### Unfollow strategy
 
 ```env
-# Days before unfollowing a non-reciprocator
 UNFOLLOW_AFTER_DAYS=7
-
-# Probability of running unfollow check per engagement cycle
 UNFOLLOW_CHECK_PROBABILITY=0.3
 ```
 
 ### Content safety
 
 ```env
-# Words that cause generated content to be rejected (comma-separated)
 BANNED_WORDS=viagra,cialis,pharmacy,mlm,pyramid,dropship
 ```
 
@@ -715,74 +663,42 @@ LOG_LEVEL=INFO
 DEBUG=false
 ```
 
-### Feature flags
-
-```env
-# Enable multi-turn conversation memory (Phase 2, disabled by default)
-CONVERSATION_ENABLED=false
-
-# Enable self-improving feedback analysis (not yet implemented)
-FEEDBACK_ANALYSIS_ENABLED=false
-```
-
 ---
 
-## 9. Deployment Guide
+## 10. Deployment Guide
 
 ### Prerequisites
 
 - VPS with at least 1 GB RAM (2 GB recommended for Chromium)
-- Ubuntu 22.04 or Debian 12
+- Ubuntu 22.04 or Debian 12 recommended
 - Python 3.10+
-- **Set VPS timezone to UTC** (`sudo timedatectl set-timezone UTC`) — all daily post timing and session hours are expressed in UTC
+- Set VPS timezone to UTC: `sudo timedatectl set-timezone UTC`
 
 ### Initial setup
 
 ```bash
-# Clone and enter the project
 git clone <repo-url>
 cd x-automation-bot
-
-# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Install Playwright browser
 playwright install chromium
 playwright install-deps chromium
 ```
 
 ### Create authenticated session
 
-Run this once locally (or with a display) to log in and save cookies:
-
 ```bash
-python create_session.py
+python create_session.py   # run once locally with a display
 ```
 
-This produces `session.json`. Copy it to the VPS — the bot loads it on every start.
+Produces `session.json`. Copy to VPS — loaded on every start.
 
 ### Environment file
 
 ```bash
 cp .env.example .env
-nano .env   # Add ANTHROPIC_API_KEY and adjust settings
-```
-
-### Running with tmux (quick start)
-
-```bash
-# Start a persistent tmux session
-tmux new-session -d -s xbot
-
-# Activate venv and start bot
-tmux send-keys -t xbot "source venv/bin/activate && python run_bot.py" Enter
-
-# Reattach later
-tmux attach -t xbot
+nano .env   # add ANTHROPIC_API_KEY and adjust settings
 ```
 
 ### Running as a systemd service (recommended)
@@ -791,7 +707,7 @@ Create `/etc/systemd/system/xbot.service`:
 
 ```ini
 [Unit]
-Description=X Automation Bot
+Description=X Automation Bot (Keepdaping)
 After=network.target
 
 [Service]
@@ -813,66 +729,55 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable xbot
 sudo systemctl start xbot
-
-# View live logs
 sudo journalctl -u xbot -f
 ```
 
-### Running via GitHub Actions
-
-The repo includes `.github/workflows/run-bot.yml` for scheduled cloud runs. Set these repository secrets:
-
-| Secret | Value |
-|---|---|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key |
-| `SESSION_COOKIES` | Base64-encoded contents of `session.json` |
-
 ### Data directory
-
-All persistent data lives in `data/` (created automatically):
 
 ```
 data/
-├── bot.db                  # Posts, replies, follows, interactions, conversions
-├── rate_limiter.db         # Action history for rate enforcement
-├── session_state.txt       # Session/break state (survives restarts)
-├── detection_cooldown.txt  # Written on suspected detection event
-└── error_history.log       # Timestamped error traces
+├── bot.db                   # Posts, replies, follows, interactions, conversions
+├── rate_limiter.db          # Action history for rate enforcement
+├── session_state.txt        # Session/break state (survives restarts)
+├── detection_cooldown.txt   # Written on suspected detection event
+└── error_history.log        # Timestamped error traces
 ```
 
 ### Reading live logs
 
-Key log patterns to monitor:
+The ReAct agent makes its reasoning visible in the log stream:
 
 ```
-# Search strategy (which path was taken)
-[INFO] Search phrase (intent-targeted, 75% path): 'struggling to get clients'
-[INFO] Search phrase (bandit, 25% path): 'building in public update'
+[THOUGHT ] Pre-flight: checking detection cooldown.
+[ACTION  ] strategy_lookup_tool()
+[OBSERVE ] Rate remaining={reply:12, follow:9} | pressure=18% | best_style=grok
+[THOUGHT ] Search phrase: 'struggling to get clients' (75% intent-targeted path)
+[ACTION  ] search_tool(query='struggling to get clients')
+[OBSERVE ] Found 8 tweets for 'struggling to get clients'
+[THOUGHT ] Intent=HIGH | policy: reply=0.72, follow=0.18 | remaining: replies=12
+[THOUGHT ] Decision: execute 'reply' on this tweet.
+[ACTION  ] engagement_action_tool(action=reply)
+[OBSERVE ] Moderation PASSED (style=grok, quality=0.76, signal=3/4, has_role=True)
+[OBSERVE ] Reply posted [style=grok] | reply_id=1923847561234
+```
 
-# Per-tweet decision audit
-[INFO] [Decision] intent=LOW | reply_prob=0.200 | roll=0.731 | reply=NO | follow_prob=0.090
-[INFO] [Decision] intent=MEDIUM | reply_prob=0.300 | roll=0.112 | reply=YES | follow_prob=0.180
-
-# Policy state
-[INFO] [Policy] intent=2 → reply_prob=0.300, follow_prob=0.180, cold_start=False
-
-# Guaranteed activity fallback
-[INFO] [Fallback] All tweets LOW intent — forcing 1 reply on first tweet
-
-# Cold-start mode active
-[DEBUG] [Policy] Cold-start mode — skipping reward adjustments, using baseline probabilities
+Self-correction in the logs:
+```
+[OBSERVE ] Moderation FAILED — gates: signal_density | signal_density=1/4 | quality=0.38
+[THOUGHT ] Self-correction attempt 2/3. Last failure: 'signal_density'. Trying style='curiosity'.
+[OBSERVE ] Moderation PASSED (style=curiosity, quality=0.61, signal=2/4, has_role=True)
 ```
 
 ---
 
-## 10. Safety & Anti-Ban Design
+## 11. Safety & Anti-Ban Design
 
 ### Browser stealth
 
 - Playwright launched without automation flags (`--enable-automation` removed)
 - `navigator.webdriver` overridden to `undefined` via JS injection on every page load
-- Persistent Chrome profile reused across runs — same browser fingerprint as a real user
-- Cookie-based authentication — no programmatic login flow that triggers security checks
+- Persistent Chrome profile reused across runs — same fingerprint as a real user
+- Cookie-based authentication — no programmatic login flow
 
 ### Human behavior simulation
 
@@ -881,7 +786,7 @@ Key log patterns to monitor:
 | Burst typing | Characters typed in variable-speed clusters of 3–7, with pauses after punctuation |
 | Natural scrolling | Each scroll split into 3–6 random-pixel steps with mid-scroll hesitations |
 | Action spacing | Minimum enforced gaps: 30s likes, 120s replies, 300s posts |
-| Random delays | All waits are `random.uniform(min, max)` — never fixed intervals |
+| Random delays | All waits use `random.uniform(min, max)` — never fixed intervals |
 | Session structure | 20–45 min active, 30–120 min breaks, sleeps outside configured hours |
 | Browse-only sessions | 5% of sessions navigate without taking any actions |
 | Timeline browsing | 25% of cycles browse the home timeline before searching |
@@ -891,172 +796,103 @@ Key log patterns to monitor:
 ```
 Daily cap        → hard limit per action type (configurable)
 Hourly cap       → 1/12 of daily limit (auto-calculated)
-2-min cluster    → max 5 of the same action in 2 minutes
+2-min cluster    → max 5 same action in 2 minutes
 10-min global    → max 8 any actions in 10 minutes
 ```
 
-All four layers must pass before any action is attempted.
+All four layers checked inside `engagement_action_tool()` before every action.
 
 ### Error handling and detection cooldown
 
-- Errors classified on each occurrence (recoverable / browser / detection / fatal)
+- Errors classified per occurrence (recoverable / browser / detection / fatal)
 - Recoverable errors: exponential backoff, capped at 5 minutes
-- Detection-signature errors (`403`, `blocked`, `detected`): 24-hour full stop, state persisted to disk, resumes automatically
+- Detection-signature errors (`403`, `blocked`, `detected`): 24-hour full stop, state persisted to disk
 - Browser errors: restart attempted before giving up
 
 ### Single browser instance
 
-The bot maintains exactly one Playwright browser context for its entire lifecycle. The background scheduler uses only SQLite — it never creates a browser, never navigates, and never competes with the main thread for the Playwright context.
+Exactly one Playwright browser context exists for the entire bot lifecycle. The background scheduler uses only SQLite — it never creates a browser, never navigates, and never competes with the main thread.
 
 ---
 
-## 11. Known Limitations
+## 12. Known Limitations
 
 ### DM detection is a placeholder
 
-`check_for_dm()` always returns `False`. Twitter's DM inbox carries high scraping risk. DM-driven conversions (`got_dm`, outcome weight ×5) are never populated. The outcome_score in practice reaches a max of 5 (reply=3 + follow=2) rather than the theoretical 10. Bandit normalisation uses `/10.0` which is correct and safe — DM detection can be added later without changing the reward scale.
+`check_for_dm()` always returns `False`. DM-driven conversions (outcome weight ×5) are never populated. The practical outcome_score maximum is 5 (reply=3 + follow=2) rather than the theoretical 10.
 
 ### Phrase-to-outcome correlation is indirect
 
-The interactions table does not store which search phrase triggered a given reply. Phrase bandit rewards are therefore computed from `search_log.high_intent_found` (a proxy), not from actual downstream outcome_score. This is the best available signal without a schema change; direct attribution would require adding a `search_phrase` column to `interactions`.
+The `interactions` table does not store which search phrase triggered a given reply. Phrase bandit rewards are computed from `search_log.high_intent_found` (a proxy), not from actual downstream `outcome_score`.
 
 ### Learning requires observation volume
 
-The policy engine and bandit start producing meaningful adjustments after approximately:
-- Reply style bandit: 10+ interactions per style (MIN_SAMPLES=10)
-- Phrase bandit: 2+ searches per phrase (sliding window)
-- Policy adjustments: 10+ checked interactions per intent tier
-
-On a fresh install with conservative limits (15 replies/day), meaningful policy adjustments begin around day 7–10. Cold-start protection ensures stable baseline behavior during this period.
+Meaningful policy adjustments begin after approximately 10 checked interactions per intent tier (~day 7–10 at conservative limits). Cold-start protection ensures stable baseline behavior during this period.
 
 ### No test coverage
 
-No automated tests exist. The content moderator, rate limiter, session manager, intent scorer, bandit, and policy engine are deterministic and well-suited to unit testing, but untested. Changes to these components should be validated manually before deploying.
-
-### Reply quality gates are lighter than daily tweet gates
-
-The 6-gate pipeline applies only to `generate_daily_tweet`. Engagement replies use basic validation and a generic check only — no named role or signal density requirement.
+No automated tests exist. The content moderator, rate limiter, session manager, intent scorer, bandit, policy engine, and AgentController are deterministic and well-suited to unit testing.
 
 ---
 
-## 12. Future Improvements
+## 13. Future Improvements
 
 ### High priority
 
 | Improvement | Description |
 |---|---|
-| Direct phrase attribution | Add `search_phrase TEXT` column to `interactions` table so phrase bandit rewards are driven by actual downstream outcome_score rather than the current `search_log` proxy |
-| DM detection | Implement `check_for_dm()` via notifications page scan to unlock the ×5 DM reward component (currently always zero) |
-| Reply quality parity | Apply the same 6-gate pipeline to engagement replies, not just daily tweets — the bandit would then learn which quality-gated replies perform best |
-| Thompson Sampling upgrade | Replace UCB1 with Thompson Sampling (Beta distribution per arm) for more principled uncertainty quantification — requires adding `alpha` and `beta` columns to `bandit_arms` |
+| Direct phrase attribution | Add `search_phrase TEXT` column to `interactions` so phrase bandit rewards are driven by actual `outcome_score` rather than the `search_log` proxy |
+| DM detection | Implement `check_for_dm()` via notifications page scan to unlock the ×5 DM reward component |
+| Reply quality parity | Apply the same 6-gate pipeline to engagement replies; the self-correction loop would then learn which quality-gated replies perform best |
+| Thompson Sampling | Replace UCB1 with Thompson Sampling (Beta distribution per arm) for more principled uncertainty quantification |
 
 ### Medium priority
 
 | Improvement | Description |
 |---|---|
-| Contextual bandit | Extend the reply-style bandit to use context features (intent level, engagement_score, time_of_day) as inputs rather than a single global arm state |
-| Log rotation | Add file rotation to the logger to prevent unbounded `error_history.log` growth |
-| Bandit dashboard | Expose `UCB1Bandit.get_stats()` and `RewardAggregator` outputs in `dashboard.py` for real-time visibility into which styles and phrases are winning |
-| Intent phrase tuning | A/B test accumulation scoring threshold (currently 2 markers) against outcome_score to determine if a lower threshold (1 marker alone) would improve or degrade lead quality |
+| Contextual bandit | Extend reply-style bandit to use context features (intent level, engagement_score, time_of_day) as inputs |
+| Bandit dashboard | Expose `UCB1Bandit.get_stats()` and `RewardAggregator` outputs for real-time visibility |
+| LLM-driven THOUGHT | Route the `_decide_action` reasoning to a Claude call for fully autonomous decision-making |
+| Log rotation | Add file rotation to prevent unbounded `error_history.log` growth |
 
 ### Lower priority
 
 | Improvement | Description |
 |---|---|
-| Test suite | Unit tests for `UCB1Bandit`, `PolicyEngine`, `RewardAggregator`, `ContentModerator`, `RateLimiter`, and `intent_scorer` |
+| Test suite | Unit tests for `AgentController`, `UCB1Bandit`, `PolicyEngine`, `RewardAggregator`, `ContentModerator`, `RateLimiter`, and `intent_scorer` |
 | Proxy support | IP rotation to reduce detection risk on long-running single-IP VPS deployments |
-| Conversation memory | `content/conversation_graph.py` exists behind `CONVERSATION_ENABLED=false` — wire it in for multi-turn follow-up with high-intent users who reply; the `conversation_turns` column in `interactions` is already reserved |
+| Conversation memory | `content/conversation_graph.py` exists behind `CONVERSATION_ENABLED=false`; wire it for multi-turn follow-up with warm leads |
 
 ---
 
-## 13. System Evolution
+## 14. System Evolution
 
-This section documents what changed from the original system and why.
+### v1 — Static pipeline
 
-### The original system (v1)
+The bot searched generic keywords (`AI`, `startup`, `tech`) and applied hardcoded probabilities. Most tweets scored LOW intent. The reward system recorded zero outcomes, the policy penalised, reply probability dropped toward minimum, and the system collapsed to inaction — a stable negative equilibrium.
 
-The bot searched with generic keywords (`AI`, `startup`, `tech`, `python`). These returned large volumes of tweets about building products, sharing opinions, and general tech discussion. Most scored LOW intent because they expressed no frustration or pain. The bot then:
+### v2 — Intent-first search + Adaptive policy
 
-- Applied hardcoded probabilities (e.g., 25% reply chance for LOW intent)
-- Sent the probabilities through an `AGGRESSION_LEVEL` multiplier (0.6 default)
-- Resulted in effective reply probability of ~15% on LOW intent tweets
-- With 90%+ of tweets scoring LOW, average actions-per-cycle were near zero
-
-When the self-learning layer was added, a new failure mode appeared: **collapse to inaction**. The reward system recorded zero outcomes (because no replies ever got responses — they were to the wrong audience). The policy engine read `avg_outcome_score = 0.0` and applied a penalty. After enough iterations, reply probability dropped to its minimum, then the aggression multiplier pushed it to near-zero. The system stopped acting, which meant the learning loop had no data, which kept penalties active — a stable negative equilibrium.
-
-### The current system (v2)
-
-**Input quality is now the primary lever.** Rather than trying to engage with any tweet and hoping probability math produces actions, the system ensures that most tweets found are already likely to be HIGH or MEDIUM intent before scoring begins.
+**Input quality became the primary lever.** The 75% INTENT_KEYWORDS bias pre-filters the tweet pool toward HIGH/MEDIUM intent before scoring begins. Minimum floors (`reply >= 0.15`, `follow >= 0.05`) and forced-fallback reply broke the "collapse to inaction" failure mode.
 
 | Dimension | v1 | v2 |
 |---|---|---|
-| Search phrases | Generic: `AI`, `startup`, `tech` | Pain-signal: `struggling to get clients`, `automation not working` |
-| Intent keyword usage | 40% (dead code, never called) | 75% of cycles (live, verified) |
-| Intent scoring passes | 2 (phrase match, question count) | 4 (phrase, accumulation, promotion, multiple questions) |
-| HIGH intent phrases | ~57 | 70+ with explicit frustration variants |
-| Struggle detection | None | 25-marker accumulation system |
-| MEDIUM→HIGH promotion | None | MEDIUM phrase + `?` → HIGH |
-| Policy minimum floors | None | `reply ≥ 0.15`, `follow ≥ 0.05` post-aggression |
+| Search phrases | Generic: `AI`, `startup` | Pain-signal: `struggling to get clients` |
+| Policy floors | None | `reply >= 0.15`, `follow >= 0.05` |
 | Cold-start handling | Penalty fires on phantom zeros | Guard blocks adjustments until 10 real samples |
-| Zero-outcome behavior | Triggers penalty | Skipped (treated as "no signal yet") |
-| Bandit under all-zero | Locks to one arm | Epsilon boosted to 0.40 |
 | Cycle with no actions | Silent | Forced-fallback reply on first tweet |
-| Observability | Limited | Per-tweet `[Decision]` and `[Policy]` logs |
 
-### What "intent-first search" means in practice
+### v3 — ReAct AgentController (current)
 
-When you search X for `"struggling to get clients"`, every result contains that exact phrase. The person wrote it publicly. By definition, they are expressing client acquisition pain — HIGH intent without even running the scorer.
+The static `for tweet in tweets: _process_single_tweet()` loop was replaced with an autonomous agent that **reasons** about each decision.
 
-When you search for `"AI"`, you get product announcements, opinion pieces, and news links. The scorer has to sift through many LOW intent results to find a few MEDIUM or HIGH ones.
-
-The 75% bias toward pain-signal phrases means 75% of the tweets the bot ever sees are pre-filtered to people who self-identified as struggling. The scorer then upgrades borderline signals that the phrase list would have missed.
-
----
-
-## 14. Why the System Now Works
-
-### Better input → better decisions
-
-The most reliable way to improve decision quality is to improve the inputs those decisions are based on. Scoring, probability calibration, and bandit optimization all become significantly more effective when the tweet pool is dominated by high-intent content:
-
-- With 90% LOW intent tweets (v1): even a 25% reply rate means ~2.5 replies per 10 tweets, mostly to low-quality targets
-- With 60% HIGH/MEDIUM intent tweets (v2): even a 15% minimum floor produces ~9 replies per 10 tweets, all to qualified targets
-
-### Non-zero action guarantee
-
-The system now has three overlapping guarantees that prevent the "collapse to inaction" failure mode:
-
-1. **Minimum probability floors** — `reply_prob ≥ 0.15` and `follow_prob ≥ 0.05` are enforced after the aggression multiplier, so no configuration or learning outcome can reduce them to zero
-2. **Cold-start protection** — the reward system cannot apply penalties before 10 real samples exist; phantom zeros from batch marking are not treated as evidence of failure
-3. **Forced-fallback reply** — if probability rolls come up negative for every tweet in a cycle, the first tweet receives a guaranteed reply regardless of its intent score
-
-These three layers are independent. Any one of them alone would prevent most silence scenarios; together they make silence structurally impossible under normal operation.
-
-### Learning loop restored
-
-The learning loop only produces useful signal when the bot takes actions. A bot that takes zero actions produces zero outcome data, which keeps the policy in a penalised state, which keeps probabilities low — a self-reinforcing failure. The minimum floors and forced fallback break this cycle by guaranteeing a non-zero action rate regardless of what the learning system currently believes.
-
-With consistent action output:
-- `interactions` table grows with real reply/follow data
-- `OutcomeUpdater` checks accumulate real `got_reply_back` and `got_follow` signals
-- The bandit receives meaningful per-style reward updates
-- The policy can distinguish genuinely weak strategies from phantom zeros
-- Better strategies gradually increase in probability; worse ones decrease
-
-The result is a stable positive equilibrium: more actions → more signal → better calibration → better targeting → higher outcome rates → more reinforcement → continued action.
-
-### Decision transparency enables fast debugging
-
-The `[Decision]` log line emitted per tweet shows the complete decision state in a single line:
-
-```
-[Decision] intent=MEDIUM | reply_prob=0.300 | roll=0.112 | reply=YES | follow_prob=0.180
-```
-
-This makes three classes of problem immediately visible without database inspection:
-
-- **Probabilities are wrong** — floors not applying, policy over-penalising, aggression too low
-- **Probabilities are right but rolls are unlucky** — normal variance, not a system failure
-- **Tweets are wrong intent tier** — scorer not detecting signals correctly
-
-Previously, diagnosing "why did nothing happen this cycle?" required reading the source, adding debug logs, and re-running. Now the answer is in the live log output.
+| Dimension | v2 | v3 |
+|---|---|---|
+| Execution model | Linear pipeline | ReAct loop (THOUGHT → ACTION → OBSERVE) |
+| Primary hub | `core/engagement.py` | `core/agent_controller.py` |
+| Search phrase selection | Two-tier static logic | Agent consults strategy_lookup_tool first |
+| Reply failure handling | Silent drop | Self-correction: diagnose gate, adjust prompt, retry |
+| User interaction memory | None | Queries `interactions` table per tweet |
+| Rate pressure handling | Reactive (stops when limit hit) | Proactive: routes to scroll_timeline at >85% |
+| Console output | `[Decision]` / `[Policy]` lines | `[THOUGHT]` / `[ACTION]` / `[OBSERVE]` per step |
+| Action decision | Probabilistic roll inside pipeline | Reasoned decision in `_decide_action()` |

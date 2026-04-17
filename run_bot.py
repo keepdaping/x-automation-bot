@@ -256,6 +256,7 @@ class BotController:
                 return False
 
             log.info("✓ Authenticated and ready")
+            log.info("✓ Engagement mode: AgentController (ReAct — Reason + Act)")
 
             # Load daily post state
             self.last_daily_post_date = get_last_daily_post_date()

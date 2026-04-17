@@ -1,11 +1,13 @@
 """
-Engagement orchestrator — search, routing, and cycle management.
+Engagement orchestrator — delegates to AgentController (ReAct mode).
 
-Decomposed modules:
-  core/reply_handler.py  — _attempt_reply
-  core/follow_handler.py — _attempt_follow
-  core/quote_handler.py  — _attempt_quote
-  core/pipeline.py       — _process_single_tweet
+The public surface is unchanged: run_engagement(page, ...) is the single
+entry point called by run_bot.py.  Internally it now creates an
+AgentController instance and runs one ReAct cycle instead of the old
+static for-loop over _process_single_tweet().
+
+Legacy helpers (select_search_phrase, search_with_fallback) are kept for
+backward-compatibility with any direct callers.
 """
 
 import random
@@ -174,136 +176,50 @@ def _select_search_keyword(keyword):
 
 def run_engagement(page, config=None, keyword=None, feedback_tracker=None):
     """
-    Run one cycle of engagement with all safety checks.
+    Run one ReAct engagement cycle via AgentController.
 
-    FIXED: Independent of DAILY_TWEET_ENABLED.
-    FIXED: Only closes FeedbackTracker when we created it (not the caller's).
+    Drop-in replacement for the old static while-loop implementation.
+    All safety guarantees (rate limits, detection cooldown, MIN_REPLY_PROB
+    floor, forced-fallback reply) are enforced inside AgentController.
     """
+    from core.agent_controller import AgentController
+
+    # Ensure required tables exist
     try:
-        rate_limiter = get_rate_limiter()
-        error_handler = get_error_handler()
-        content_engine = get_content_engine()
-
-        # Track ownership so we only close what we create
-        _owns_feedback = feedback_tracker is None
-        feedback = feedback_tracker if feedback_tracker else FeedbackTracker()
-
-        # Ensure required tables exist
         init_conversion_tracking()
         init_search_log()
-
-        if error_handler.is_in_detection_cooldown():
-            log.critical("⏸️  Bot is in detection cooldown - skipping")
-            return False
-
-        log.info("=" * 70)
-        log.info("ENGAGEMENT CYCLE STARTING")
-        log.info("=" * 70)
-
-        remaining = rate_limiter.get_remaining_actions()
-        log.info(f"Daily limits remaining: {remaining}")
-
-        total_remaining = sum(remaining.values())
-        if total_remaining == 0:
-            log.info("❌ Daily limits reached - skipping cycle")
-            return False
-
-        # Occasionally check past reply outcomes (browser-based, main thread)
-        # ~15% of cycles to keep detection risk low
-        if random.random() < 0.15:
-            try:
-                from core.outcome_updater import get_outcome_updater
-                get_outcome_updater().check_pending_with_page(page, limit=3)
-            except Exception as e:
-                log.debug(f"Outcome check skipped: {e}")
-
-        # Occasionally browse timeline (human behavior)
-        if random.random() < 0.25:
-            _browse_timeline(page, rate_limiter)
-
-        # Occasionally run unfollow cycle
-        if random.random() < Config.UNFOLLOW_CHECK_PROBABILITY:
-            run_unfollow_cycle(page)
-
-        # Run once-per-day reflection/optimization (CHANGE 11)
-        _maybe_daily_reflect(content_engine)
-
-        # Search for tweets — weighted phrase selection with fallback (CHANGE 3 & 5)
-        if keyword:
-            search_keyword = keyword
-            tweets, search_keyword = search_with_fallback(page, search_keyword)
-        else:
-            search_keyword = select_search_phrase()
-            log.info(f"Searching for tweets (phrase: '{search_keyword}')...")
-            try:
-                tweets, search_keyword = search_with_fallback(page, search_keyword)
-            except Exception as e:
-                error_handler.handle_error(e, "search_tweets")
-                return False
-
-        if not tweets:
-            log.warning(f"No tweets found for '{search_keyword}' (all fallbacks exhausted)")
-            try:
-                log_search(search_keyword, tweets_found=0)
-            except Exception:
-                pass
-            return False
-
-        log.info(f"Found {len(tweets)} tweets for '{search_keyword}'")
-
-        actions_taken = 0
-        errors_in_cycle = 0
-        high_intent_found = 0
-        first_tweet = None   # kept for forced-fallback reply
-
-        for idx, tweet in enumerate(tweets, 1):
-            log.debug(f"\n--- Processing tweet {idx}/{len(tweets)} ---")
-            if first_tweet is None:
-                first_tweet = tweet   # save element before any navigation
-            actions, errors, was_high_intent = _process_single_tweet(
-                tweet, page, rate_limiter, error_handler,
-                content_engine, search_keyword, feedback,
-            )
-            actions_taken += actions
-            errors_in_cycle += errors
-            if was_high_intent:
-                high_intent_found += 1
-
-        # ── Forced-fallback reply ──────────────────────────────────────────
-        # If the entire cycle produced zero actions (all tweets scored LOW and
-        # the probability rolls came up negative), attempt one guaranteed reply
-        # on the first tweet to ensure the bot never goes completely silent.
-        # This is deliberately capped at 1 so it cannot spike rate limits.
-        if actions_taken == 0 and first_tweet is not None:
-            can_reply, _ = rate_limiter.can_perform_action("reply")
-            if can_reply:
-                log.info(
-                    "[Fallback] All tweets LOW intent and no actions taken — "
-                    "forcing 1 reply on first tweet"
-                )
-                try:
-                    f_actions, f_errors, _ = _process_single_tweet(
-                        first_tweet, page, rate_limiter, error_handler,
-                        content_engine, search_keyword, feedback,
-                        force_reply=True,
-                    )
-                    actions_taken += f_actions
-                    errors_in_cycle += f_errors
-                except Exception as fb_err:
-                    log.warning(f"[Fallback] Forced reply failed: {fb_err}")
-
-        try:
-            log_search(search_keyword, len(tweets), actions_taken, high_intent_found)
-        except Exception as e:
-            log.warning(f"Search log write failed: {e}")
-
-        if _owns_feedback:
-            feedback.close()
-
-        log.info(f"\nCYCLE COMPLETE: {actions_taken} actions, {errors_in_cycle} errors\n")
-        return actions_taken > 0
-
     except Exception as e:
-        log.error(f"Fatal error in engagement cycle: {e}")
+        log.warning(f"DB init warning (non-fatal): {e}")
+
+    # Periodic side-effects that don't belong in the per-tweet loop
+    rate_limiter = get_rate_limiter()
+    error_handler = get_error_handler()
+    content_engine = get_content_engine()
+
+    if random.random() < 0.15:
+        try:
+            from core.outcome_updater import get_outcome_updater
+            get_outcome_updater().check_pending_with_page(page, limit=3)
+        except Exception as e:
+            log.debug(f"Outcome check skipped: {e}")
+
+    if random.random() < 0.25:
+        _browse_timeline(page, rate_limiter)
+
+    if random.random() < Config.UNFOLLOW_CHECK_PROBABILITY:
+        run_unfollow_cycle(page)
+
+    _maybe_daily_reflect(content_engine)
+
+    # Delegate the full ReAct cycle to AgentController
+    try:
+        agent = AgentController(page, feedback_tracker=feedback_tracker)
+        success = agent.run_cycle(keyword=keyword)
+        # Only close the tracker when AgentController owns it (i.e. caller
+        # did not pass one — same contract as the old _owns_feedback flag).
+        agent.close()
+        return success
+    except Exception as e:
+        log.error(f"Fatal error in AgentController cycle: {e}")
         error_handler.handle_error(e, "run_engagement_main")
         return False
